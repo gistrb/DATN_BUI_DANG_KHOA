@@ -1,0 +1,213 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Đăng ký khuôn mặt - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title text-center">Đăng ký khuôn mặt nhân viên</h3>
+            </div>
+            <div class="card-body">
+                <div class="form-group mb-3">
+                    <label for="employeeSelect">Chọn nhân viên:</label>
+                    <select class="form-control" id="employeeSelect">
+                        <option value="">-- Chọn nhân viên --</option>
+                        {% for employee in employees %}
+                        <option value="{{ employee.employee_id }}">{{ employee.user.get_full_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="text-center mb-3">
+                    <video id="video" width="640" height="480" autoplay></video>
+                    <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+                </div>
+
+                <div class="progress mb-3" style="height: 25px;">
+                    <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0"
+                        aria-valuemin="0" aria-valuemax="100">0/20</div>
+                </div>
+
+                <div class="text-center">
+                    <button id="startBtn" class="btn btn-primary btn-lg me-2" disabled>Bắt đầu thu thập</button>
+                    <button id="captureBtn" class="btn btn-success btn-lg" disabled style="display: none;">Đang thu
+                        thập...</button>
+                </div>
+
+                <div id="result" class="mt-3 text-center"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const startBtn = document.getElementById('startBtn');
+    const captureBtn = document.getElementById('captureBtn');
+    const employeeSelect = document.getElementById('employeeSelect');
+    const resultDiv = document.getElementById('result');
+    const progressBar = document.getElementById('progressBar');
+    const ctx = canvas.getContext('2d');
+
+    let stream = null;
+    let captureInterval = null;
+    let captures = [];
+    const REQUIRED_CAPTURES = 20;
+    const CAPTURE_INTERVAL = 500; // 0.5 giây
+
+    // Khởi tạo camera
+    async function initCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: "user"
+                }
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            console.error("Error accessing camera:", err);
+            alert("Không thể truy cập camera. Vui lòng kiểm tra lại quyền truy cập.");
+        }
+    }
+
+    function updateProgress(count) {
+        const percentage = (count / REQUIRED_CAPTURES) * 100;
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+        progressBar.textContent = `${count}/${REQUIRED_CAPTURES}`;
+    }
+
+    async function startCapturing() {
+        startBtn.style.display = 'none';
+        captureBtn.style.display = 'inline-block';
+        captures = [];
+        updateProgress(0);
+
+        captureInterval = setInterval(async () => {
+            if (captures.length >= REQUIRED_CAPTURES) {
+                clearInterval(captureInterval);
+                await registerFaces();
+                return;
+            }
+
+            // Chụp ảnh từ video
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageData = canvas.toDataURL('image/jpeg');
+            captures.push(imageData);
+            updateProgress(captures.length);
+        }, CAPTURE_INTERVAL);
+    }
+
+    async function registerFaces() {
+        const employeeId = employeeSelect.value;
+        if (!employeeId) {
+            alert("Vui lòng chọn nhân viên");
+            return;
+        }
+
+        captureBtn.disabled = true;
+        captureBtn.textContent = 'Đang xử lý...';
+
+        try {
+            const response = await fetch('{% url "attendance:register_face" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    employee_id: employeeId,
+                    images: captures
+                })
+            });
+
+            const data = await response.json();
+            if (data.success) {
+                // Format thời gian theo múi giờ Việt Nam
+                const now = new Date();
+                const options = {
+                    timeZone: 'Asia/Ho_Chi_Minh',
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                };
+
+                resultDiv.innerHTML = '';
+
+                Swal.fire({
+                    title: data.message,
+                    html: `
+                    <div class="text-start">
+                        <h5>Thông tin đăng ký:</h5>
+                        <p><strong>Mã nhân viên:</strong> ${data.employee.id}</p>
+                        <p><strong>Họ và tên:</strong> ${data.employee.name}</p>
+                        <p><strong>Phòng ban:</strong> ${data.employee.department}</p>
+                        <p><strong>Chức vụ:</strong> ${data.employee.position}</p>
+                        <p><strong>Số mẫu đã lưu:</strong> ${data.samples_count} mẫu</p>
+                        <p><strong>Thời gian:</strong> ${now.toLocaleString('vi-VN', options)}</p>
+                    </div>
+                `,
+                    icon: 'success',
+                    timer: 5000,
+                    showConfirmButton: true
+                });
+
+                // Tự động reset form sau 5 giây
+                setTimeout(() => {
+                    employeeSelect.value = '';
+                    startBtn.disabled = true;
+                }, 5000);
+            } else {
+                Swal.fire({
+                    title: 'Đăng ký thất bại',
+                    html: `
+                    <p><strong>Lỗi:</strong> ${data.error}</p>
+                    <p class="mt-2">Vui lòng thử lại hoặc kiểm tra các điều kiện sau:</p>
+                    <ul class="text-start">
+                        <li>Ánh sáng đầy đủ</li>
+                        <li>Khuôn mặt nằm trong khung hình</li>
+                        <li>Không có vật cản che khuôn mặt</li>
+                    </ul>
+                `,
+                    icon: 'error'
+                });
+            }
+        } catch (err) {
+            console.error("Error registering faces:", err);
+            Swal.fire({
+                title: 'Lỗi hệ thống',
+                text: `Đã xảy ra lỗi khi đăng ký khuôn mặt: ${err.message}`,
+                icon: 'error'
+            });
+        } finally {
+            captureBtn.style.display = 'none';
+            startBtn.style.display = 'inline-block';
+            startBtn.disabled = false;
+            captures = [];
+            updateProgress(0);
+        }
+    }
+
+    // Khởi tạo camera khi trang được load
+    document.addEventListener('DOMContentLoaded', initCamera);
+
+    // Enable/disable nút bắt đầu dựa trên việc chọn nhân viên
+    employeeSelect.addEventListener('change', () => {
+        startBtn.disabled = !employeeSelect.value;
+    });
+
+    // Xử lý sự kiện nút bắt đầu thu thập
+    startBtn.addEventListener('click', startCapturing);
+</script>
+{% endblock %}

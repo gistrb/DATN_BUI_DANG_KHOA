@@ -1,0 +1,189 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Quản lý nhân viên - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+                <h3 class="card-title mb-0"><i class="bi bi-people"></i> Quản lý nhân viên</h3>
+                <a href="{% url 'attendance:employee_create' %}" class="btn btn-light">
+                    <i class="bi bi-plus-circle"></i> Thêm nhân viên mới
+                </a>
+            </div>
+            <div class="card-body">
+                <!-- Search and Filter -->
+                <div class="row mb-3">
+                    <div class="col-md-4">
+                        <input type="text" id="searchInput" class="form-control" placeholder="Tìm kiếm nhân viên...">
+                    </div>
+                    <div class="col-md-3">
+                        <select id="departmentFilter" class="form-select">
+                            <option value="">Tất cả phòng ban</option>
+                            {% for dept in departments %}
+                            <option value="{{ dept }}">{{ dept }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select id="statusFilter" class="form-select">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="WORKING">Đang làm việc</option>
+                            <option value="ON_LEAVE">Đang nghỉ phép</option>
+                            <option value="TERMINATED">Đã nghỉ việc</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover" id="employeeTable">
+                        <thead>
+                            <tr>
+                                <th>Mã NV</th>
+                                <th>Họ và tên</th>
+                                <th>Email</th>
+                                <th>Phòng ban</th>
+                                <th>Chức vụ</th>
+                                <th>Trạng thái</th>
+                                <th>Ngày vào làm</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for emp in employees %}
+                            <tr data-department="{{ emp.department }}" data-status="{{ emp.work_status }}">
+                                <td>{{ emp.employee_id }}</td>
+                                <td>{{ emp.user.get_full_name }}</td>
+                                <td>{{ emp.user.email|default:"-" }}</td>
+                                <td>
+                                    {% if emp.department %}
+                                    <a href="{% url 'attendance:employee_list' %}?department={{ emp.department }}"
+                                        class="badge bg-secondary text-decoration-none">
+                                        {{ emp.department }}
+                                    </a>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ emp.position }}</td>
+                                <td>
+                                    <span class="badge 
+                                        {% if emp.work_status == 'WORKING' %}bg-success
+                                        {% elif emp.work_status == 'ON_LEAVE' %}bg-warning
+                                        {% else %}bg-danger{% endif %}">
+                                        {{ emp.get_work_status_display }}
+                                    </span>
+                                </td>
+                                <td>{{ emp.join_date|date:"d/m/Y" }}</td>
+                                <td>
+                                    <a href="{% url 'attendance:employee_detail' emp.employee_id %}"
+                                        class="btn btn-sm btn-info" title="Chi tiết">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{% url 'admin:attendance_employee_change' emp.id %}"
+                                        class="btn btn-sm btn-warning" title="Sửa">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-danger"
+                                        onclick="deleteEmployee('{{ emp.employee_id }}', '{{ emp.user.get_full_name }}')"
+                                        title="Xóa">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="8" class="text-center">Chưa có nhân viên nào</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Statistics -->
+                <div class="row mt-4">
+                    <div class="col-md-3">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h3>{{ total_employees }}</h3>
+                                <p class="mb-0">Tổng nhân viên</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body text-center">
+                                <h3>{{ working_count }}</h3>
+                                <p class="mb-0">Đang làm việc</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-dark">
+                            <div class="card-body text-center">
+                                <h3>{{ on_leave_count }}</h3>
+                                <p class="mb-0">Đang nghỉ phép</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-danger text-white">
+                            <div class="card-body text-center">
+                                <h3>{{ terminated_count }}</h3>
+                                <p class="mb-0">Đã nghỉ việc</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Search functionality
+    document.getElementById('searchInput').addEventListener('keyup', filterTable);
+    document.getElementById('departmentFilter').addEventListener('change', filterTable);
+    document.getElementById('statusFilter').addEventListener('change', filterTable);
+
+    function filterTable() {
+        const searchValue = document.getElementById('searchInput').value.toLowerCase();
+        const deptFilter = document.getElementById('departmentFilter').value;
+        const statusFilter = document.getElementById('statusFilter').value;
+        const rows = document.querySelectorAll('#employeeTable tbody tr');
+
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            const dept = row.getAttribute('data-department');
+            const status = row.getAttribute('data-status');
+
+            const matchSearch = text.includes(searchValue);
+            const matchDept = !deptFilter || dept === deptFilter;
+            const matchStatus = !statusFilter || status === statusFilter;
+
+            row.style.display = (matchSearch && matchDept && matchStatus) ? '' : 'none';
+        });
+    }
+
+    function deleteEmployee(employeeId, employeeName) {
+        Swal.fire({
+            title: 'Xác nhận xóa',
+            text: `Bạn có chắc muốn xóa nhân viên "${employeeName}"?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Xóa',
+            cancelButtonText: 'Hủy'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Redirect to admin delete page
+                window.location.href = `/admin/attendance/employee/${employeeId}/delete/`;
+            }
+        });
+    }
+</script>
+{% endblock %}

@@ -1,0 +1,40 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Xóa phòng ban - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-6 offset-md-3">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h3 class="card-title mb-0">Xác nhận xóa phòng ban</h3>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Cảnh báo!</strong> Bạn có chắc chắn muốn xóa phòng ban này?
+                </div>
+                <p><strong>Tên phòng ban:</strong> {{ department.name }}</p>
+                <p><strong>Số nhân viên:</strong> {{ department.get_employee_count }}</p>
+                {% if department.get_employee_count > 0 %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    Nhân viên trong phòng ban này sẽ được chuyển về "Chưa phân công".
+                </div>
+                {% endif %}
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'attendance:department_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Hủy
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="bi bi-trash"></i> Xác nhận xóa
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

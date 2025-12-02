@@ -1,0 +1,22 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Đăng xuất - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                <h2 class="card-title text-success mb-4">Đăng xuất thành công</h2>
+                <p class="card-text mb-4">Bạn đã đăng xuất khỏi hệ thống an toàn.</p>
+
+                <div class="d-grid gap-2 col-8 mx-auto">
+                    <a href="{% url 'login' %}" class="btn btn-primary">
+                        <i class="bi bi-box-arrow-in-right"></i> Đăng nhập lại
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

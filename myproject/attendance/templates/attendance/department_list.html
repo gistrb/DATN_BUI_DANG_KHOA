@@ -1,0 +1,74 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Quản lý phòng ban - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
+                <h3 class="card-title mb-0">Quản lý phòng ban</h3>
+                <a href="{% url 'attendance:department_create' %}" class="btn btn-light">
+                    <i class="bi bi-plus-circle"></i> Thêm phòng ban
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Tên phòng ban</th>
+                                <th>Mô tả</th>
+                                <th>Số nhân viên</th>
+                                <th>Đang làm việc</th>
+                                <th>Ngày tạo</th>
+                                <th>Thao tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for dept in departments %}
+                            <tr>
+                                <td>
+                                    <a href="{% url 'attendance:department_detail' dept.id %}"
+                                        class="text-decoration-none">
+                                        <strong>{{ dept.name }}</strong>
+                                    </a>
+                                </td>
+                                <td>{{ dept.description|default:"-"|truncatewords:10 }}</td>
+                                <td>
+                                    <a href="{% url 'attendance:department_detail' dept.id %}"
+                                        class="badge bg-info text-decoration-none">
+                                        {{ dept.get_employee_count }} nhân viên
+                                    </a>
+                                </td>
+                                <td>{{ dept.get_active_employee_count }}</td>
+                                <td>{{ dept.created_at|date:"d/m/Y" }}</td>
+                                <td>
+                                    <a href="{% url 'attendance:department_detail' dept.id %}"
+                                        class="btn btn-sm btn-info" title="Chi tiết">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                    <a href="{% url 'attendance:department_update' dept.id %}"
+                                        class="btn btn-sm btn-warning" title="Sửa">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{% url 'attendance:department_delete' dept.id %}"
+                                        class="btn btn-sm btn-danger" title="Xóa"
+                                        onclick="return confirm('Bạn có chắc muốn xóa phòng ban này?')">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center">Chưa có phòng ban nào</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

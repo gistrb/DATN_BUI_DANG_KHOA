@@ -1,0 +1,331 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}Dashboard - {{ block.super }}{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    .stat-card {
+        transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+
+    .quick-action-card {
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .quick-action-card:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if user.is_staff %}
+<!-- Admin Dashboard -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <a href="{% url 'attendance:employee_list' %}" class="text-decoration-none">
+            <div class="card quick-action-card border-primary">
+                <div class="card-body text-center">
+                    <i class="bi bi-people fs-1 text-primary"></i>
+                    <h6 class="mt-2 mb-0">Quản Lý Nhân Viên</h6>
+                    <small class="text-muted">Xem & chỉnh sửa</small>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{% url 'attendance:department_list' %}" class="text-decoration-none">
+            <div class="card quick-action-card border-success">
+                <div class="card-body text-center">
+                    <i class="bi bi-building fs-1 text-success"></i>
+                    <h6 class="mt-2 mb-0">Quản Lý Phòng Ban</h6>
+                    <small class="text-muted">Tổ chức phòng ban</small>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{% url 'attendance:register_face' %}" class="text-decoration-none">
+            <div class="card quick-action-card border-warning">
+                <div class="card-body text-center">
+                    <i class="bi bi-person-badge fs-1 text-warning"></i>
+                    <h6 class="mt-2 mb-0">Đăng Ký Khuôn Mặt</h6>
+                    <small class="text-muted">Thêm nhân viên mới</small>
+                </div>
+            </div>
+        </a>
+    </div>
+    <div class="col-md-3">
+        <a href="{% url 'admin:index' %}" class="text-decoration-none">
+            <div class="card quick-action-card border-danger">
+                <div class="card-body text-center">
+                    <i class="bi bi-gear fs-1 text-danger"></i>
+                    <h6 class="mt-2 mb-0">Cài Đặt Hệ Thống</h6>
+                    <small class="text-muted">Django Admin</small>
+                </div>
+            </div>
+        </a>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-pie-chart"></i> Trạng Thái Làm Việc</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="workStatusChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="bi bi-bar-chart"></i> Trạng Thái Hiện Tại</h6>
+            </div>
+            <div class="card-body">
+                <canvas id="currentStatusChart" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Activity / Employee Summary -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="bi bi-clock-history"></i> Tóm Tắt Nhân Viên</h6>
+                <a href="{% url 'attendance:employee_list' %}" class="btn btn-sm btn-primary">
+                    Xem Tất Cả <i class="bi bi-arrow-right"></i>
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Mã NV</th>
+                                <th>Họ Tên</th>
+                                <th>Phòng Ban</th>
+                                <th>Chức Vụ</th>
+                                <th>Trạng Thái</th>
+                                <th>Thao Tác</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for emp in employees|slice:":10" %}
+                            <tr>
+                                <td><strong>{{ emp.employee_id }}</strong></td>
+                                <td>{{ emp.user.get_full_name }}</td>
+                                <td>
+                                    <a href="{% url 'attendance:department_detail' emp.department_id %}"
+                                        class="badge bg-secondary text-decoration-none">
+                                        {{ emp.department }}
+                                    </a>
+                                </td>
+                                <td>{{ emp.position }}</td>
+                                <td>
+                                    <span
+                                        class="badge {% if emp.current_status == 'IN_OFFICE' %}bg-success{% elif emp.current_status == 'OUT_OFFICE' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                        {{ emp.get_current_status_display }}
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="{% url 'attendance:employee_detail' emp.employee_id %}"
+                                        class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Chưa có nhân viên nào</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<!-- Employee Dashboard -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-camera-video"></i> Chấm Công</h4>
+            </div>
+            <div class="card-body text-center d-flex flex-column justify-content-center">
+                <p class="card-text">Thực hiện chấm công khuôn mặt ngay.</p>
+                <a href="{% url 'attendance:face_check' %}" class="btn btn-lg btn-success w-100">
+                    <i class="bi bi-qr-code-scan"></i> Chấm Công Ngay
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0"><i class="bi bi-calendar-check"></i> Thông Tin Chuyên Cần Tháng Này</h4>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-4 mb-3">
+                        <div class="p-3 border rounded bg-light">
+                            <h3 class="text-success">{{ personal_stats.on_time }}</h3>
+                            <p class="mb-0 text-muted">Đúng Giờ</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="p-3 border rounded bg-light">
+                            <h3 class="text-warning">{{ personal_stats.late }}</h3>
+                            <p class="mb-0 text-muted">Đi Muộn</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="p-3 border rounded bg-light">
+                            <h3 class="text-danger">{{ personal_stats.early }}</h3>
+                            <p class="mb-0 text-muted">Về Sớm</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p><strong>Tổng Số Ngày Làm Việc:</strong> {{ personal_stats.total_days }} ngày</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Calendar -->
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0">Lịch Chấm Công Tháng {{ current_time|date:"m/Y" }}</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered mb-0 text-center">
+                        <thead class="bg-light">
+                            <tr>
+                                <th>T2</th>
+                                <th>T3</th>
+                                <th>T4</th>
+                                <th>T5</th>
+                                <th>T6</th>
+                                <th class="text-primary">T7</th>
+                                <th class="text-danger">CN</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for week in calendar_data %}
+                            <tr>
+                                {% for day in week %}
+                                {% if day %}
+                                <td class="align-middle position-relative {% if day.is_today %}bg-info-subtle border-info{% endif %}"
+                                    style="height: 100px; width: 14.28%;">
+                                    <span
+                                        class="position-absolute top-0 start-0 m-1 fw-bold {% if day.is_today %}text-primary{% endif %}">
+                                        {{ day.day }}
+                                    </span>
+                                    {% if day.status %}
+                                    <div class="mt-4">
+                                        {% if day.status == 'ON_TIME' %}
+                                        <span class="badge bg-success rounded-pill">Đúng Giờ</span>
+                                        {% elif day.status == 'LATE' %}
+                                        <span class="badge bg-warning text-dark rounded-pill">Đi Muộn</span>
+                                        {% elif day.status == 'EARLY' %}
+                                        <span class="badge bg-danger rounded-pill">Về Sớm</span>
+                                        {% endif %}
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                {% else %}
+                                <td class="bg-light"></td>
+                                {% endif %}
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if user.is_staff %}
+<script>
+    // Work Status Chart
+    const workStatusCtx = document.getElementById('workStatusChart').getContext('2d');
+    new Chart(workStatusCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Đang Làm Việc', 'Đang Nghỉ Phép', 'Đã Nghỉ Việc'],
+            datasets: [{
+                data: [{{ company_stats.working }}, {{ company_stats.on_leave }}, {{ company_stats.terminated }}],
+        backgroundColor: ['#198754', '#ffc107', '#dc3545']
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+    });
+
+    // Current Status Chart
+    const currentStatusCtx = document.getElementById('currentStatusChart').getContext('2d');
+    new Chart(currentStatusCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Đang Trong Ca', 'Đã Check-out', 'Chưa Check-in'],
+            datasets: [{
+                label: 'Số Lượng Nhân Viên',
+                data: [{{ company_stats.in_office }}, {{ company_stats.out_office }}, {{ company_stats.not_in }}],
+        backgroundColor: ['#198754', '#ffc107', '#6c757d']
+            }]
+        },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                display: false
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        }
+    }
+    });
+</script>
+{% endif %}
+{% endblock %}

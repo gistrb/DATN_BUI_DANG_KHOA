@@ -1,0 +1,40 @@
+{% extends 'attendance/base.html' %}
+
+{% block title %}{% if department %}Sửa{% else %}Thêm{% endif %} phòng ban - {{ block.super }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h3 class="card-title mb-0">
+                    {% if department %}Sửa phòng ban{% else %}Thêm phòng ban mới{% endif %}
+                </h3>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="name" class="form-label">Tên phòng ban <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="name" name="name"
+                            value="{{ department.name|default:'' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="description" class="form-label">Mô tả</label>
+                        <textarea class="form-control" id="description" name="description"
+                            rows="4">{{ department.description|default:'' }}</textarea>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'attendance:department_list' %}" class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Quay lại
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save"></i> Lưu
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
