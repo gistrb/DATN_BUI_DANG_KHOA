@@ -1,12 +1,16 @@
 import axios from 'axios';
 
-const API_URL = 'http://127.0.0.1:8000';
+// Tự động nhận diện hostname để tránh lỗi Cross-site cookie (localhost vs 127.0.0.1)
+const hostname = window.location.hostname;
+const API_URL = `http://${hostname}:8000`; // Backend chạy port 8000
+// Nếu hostname là IP LAN (cho mobile testing), backend cũng phải bind vào 0.0.0.0:8000
 
 const api = axios.create({
     baseURL: API_URL,
     headers: {
         'Content-Type': 'application/json',
     },
+    withCredentials: true,
 });
 
 export const login = async (username, password) => {
@@ -38,12 +42,12 @@ export const getHistory = async (employeeId) => {
 
 // Face API calls
 export const processAttendance = async (imageData) => {
-    const response = await axios.post('http://127.0.0.1:8000/process-attendance/', { image: imageData });
+    const response = await api.post('/process-attendance/', { image: imageData });
     return response.data;
 };
 
 export const registerFace = async (employeeId, images) => {
-    const response = await axios.post('http://127.0.0.1:8000/register-face/', { employee_id: employeeId, images });
+    const response = await api.post('/register-face/', { employee_id: employeeId, images });
     return response.data;
 };
 

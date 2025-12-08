@@ -41,15 +41,20 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# Allow all origins in development (for mobile app access)
-CORS_ALLOW_ALL_ORIGINS = True
+# CORS Configuration
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_ALL_ORIGINS = False  # Disable allow all to assume credentials
 
-# Alternatively, you can specify allowed origins:
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:5173",
-#     "http://127.0.0.1:5173",
-#     "http://192.168.0.104:8081",  # Expo mobile app
-# ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost(:[0-9]+)?$",
+    r"^http://127\.0\.0\.1(:[0-9]+)?$",
+    r"^http://192\.168\.[0-9]{1,3}\.[0-9]{1,3}(:[0-9]+)?$",  # Allow LAN IPs
+]
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 ROOT_URLCONF = "myproject.urls"
 

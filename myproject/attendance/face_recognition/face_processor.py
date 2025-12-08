@@ -14,8 +14,8 @@ class FaceProcessor:
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
         # Ngưỡng similarity cho ArcFace (Cosine Similarity)
-        # Thường từ 0.3 đến 0.5 tùy độ khắt khe. 0.4 là mức trung bình tốt.
-        self.similarity_threshold = 0.4
+        # Tăng lên 0.5 để giảm nhầm lẫn giữa các nhân viên (cải thiện từ 0.4)
+        self.similarity_threshold = 0.5
         
         self.min_face_size = (64, 64)
 
@@ -77,6 +77,200 @@ class FaceProcessor:
         except Exception as e:
             print(f"[compare_embeddings] Lỗi: {e}")
             return 0.0
+
+    def check_image_quality(self, image: np.ndarray, face_bbox: List[float]) -> Dict[str, Any]:
+        """
+        Kiểm tra chất lượng ảnh và khuôn mặt
+        
+        Args:
+            image: Ảnh đầu vào (BGR format)
+            face_bbox: Bounding box của khuôn mặt [x1, y1, x2, y2]
+            
+        Returns:
+            Dict chứa thông tin chất lượng:
+            - is_valid: True nếu ảnh đạt tiêu chuẩn
+            - brightness: Độ sáng trung bình
+            - face_area: Diện tích khuôn mặt
+            - blur_score: Điểm độ nét
+            - message: Thông báo chi tiết
+        """
+        try:
+            # Chuyển sang grayscale để tính toán
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            
+            # 1. Tính độ sáng trung bình
+            brightness = np.mean(gray)
+            
+            # 2. Tính kích thước khuôn mặt
+            x1, y1, x2, y2 = face_bbox
+            face_width = x2 - x1
+            face_height = y2 - y1
+            face_area = face_width * face_height
+            
+            # 3. Tính độ nét (Laplacian variance)
+            # Giá trị cao = ảnh nét, giá trị thấp = ảnh mờ
+            face_region = gray[int(y1):int(y2), int(x1):int(x2)]
+            if face_region.size > 0:
+                blur_score = cv2.Laplacian(face_region, cv2.CV_64F).var()
+            else:
+                blur_score = 0
+            
+            # Tiêu chuẩn chất lượng:
+            # - Độ sáng: 50-220 (tránh quá tối hoặc quá sáng)
+            # - Diện tích khuôn mặt: > 10000 pixels
+            # - Độ nét: > 100 (Laplacian variance)
+            is_bright_enough = 50 < brightness < 220
+            is_face_large_enough = face_area > 10000
+            is_sharp_enough = blur_score > 100
+            
+            is_valid = is_bright_enough and is_face_large_enough and is_sharp_enough
+            
+            # Tạo thông báo chi tiết
+            if not is_valid:
+                issues = []
+                if not is_bright_enough:
+                    if brightness <= 50:
+                        issues.append("Ảnh quá tối")
+                    else:
+                        issues.append("Ảnh quá sáng")
+                if not is_face_large_enough:
+                    issues.append("Khuôn mặt quá nhỏ")
+                if not is_sharp_enough:
+                    issues.append("Ảnh bị mờ")
+                message = ", ".join(issues)
+            else:
+                message = "Chất lượng tốt"
+            
+            return {
+                'is_valid': is_valid,
+                'brightness': float(brightness),
+                'face_area': float(face_area),
+                'blur_score': float(blur_score),
+                'message': message
+            }
+            
+        except Exception as e:
+            print(f"[check_image_quality] Lỗi: {e}")
+            return {
+                'is_valid': False,
+                'brightness': 0,
+                'face_area': 0,
+                'blur_score': 0,
+                'message': f'Lỗi kiểm tra chất lượng: {str(e)}'
+            }
+
+    def detect_pose(self, image: np.ndarray) -> Optional[Dict[str, Any]]:
+        """
+        Phát hiện tư thế khuôn mặt sử dụng InsightFace
+        
+        Args:
+            image: Ảnh đầu vào (BGR format)
+            
+        Returns:
+            Dict chứa:
+            - yaw: Góc xoay trái/phải (degrees)
+            - pitch: Góc ngẩng/cúi (degrees)
+            - roll: Góc nghiêng (degrees)
+            - pose_type: 'front', 'left', 'right', 'up', 'down'
+            - bbox: Bounding box của khuôn mặt
+        """
+        try:
+            faces = self.app.get(image)
+            if not faces:
+                return None
+            
+            # Lấy khuôn mặt lớn nhất
+            faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
+            face = faces[0]
+            
+            # InsightFace cung cấp pose - đã là degrees rồi, KHÔNG cần convert
+            if hasattr(face, 'pose') and face.pose is not None:
+                # InsightFace's pose có thể có thứ tự khác!
+                # Thử nghiệm: hoán đổi và đảo dấu
+                raw_0 = float(face.pose[0])
+                raw_1 = float(face.pose[1])
+                raw_2 = float(face.pose[2])
+                
+                # Dựa trên feedback: yaw và pitch bị hoán đổi + đảo dấu
+                # pitch ở index 0, yaw ở index 1
+                pitch_raw = raw_0   # KHÔNG đảo dấu pitch (đã test)
+                yaw_raw = -raw_1    # Đảo dấu yaw
+                roll_raw = raw_2
+                
+                # Normalize về khoảng -180 đến 180
+                def normalize_angle(angle):
+                    """Normalize góc về khoảng -180 đến 180"""
+                    while angle > 180:
+                        angle -= 360
+                    while angle < -180:
+                        angle += 360
+                    return angle
+                
+                yaw = normalize_angle(yaw_raw)
+                pitch = normalize_angle(pitch_raw)
+                roll = normalize_angle(roll_raw)
+                
+                print(f"[detect_pose] Raw [0]={raw_0:.2f}, [1]={raw_1:.2f}, [2]={raw_2:.2f}")
+                print(f"[detect_pose] After swap+flip: yaw={yaw:.2f}°, pitch={pitch:.2f}°, roll={roll:.2f}°")
+            else:
+                # Nếu model không hỗ trợ pose, trả về front
+                print("[detect_pose] Model không hỗ trợ pose detection - sử dụng phương pháp dự phòng")
+                return {
+                    'yaw': 0.0,
+                    'pitch': 0.0,
+                    'roll': 0.0,
+                    'pose_type': 'front',
+                    'bbox': [int(x) for x in face.bbox]
+                }
+            
+            # Phân loại tư thế
+            pose_type = self._classify_pose(yaw, pitch)
+            print(f"[detect_pose] Classified as: {pose_type}")
+            
+            return {
+                'yaw': float(yaw),
+                'pitch': float(pitch),
+                'roll': float(roll),
+                'pose_type': pose_type,
+                'bbox': [int(x) for x in face.bbox]
+            }
+            
+        except Exception as e:
+            print(f"[detect_pose] Lỗi: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    def _classify_pose(self, yaw: float, pitch: float) -> str:
+        """
+        Phân loại tư thế dựa trên góc yaw và pitch
+        
+        Args:
+            yaw: Góc xoay trái/phải (-180 đến +180)
+            pitch: Góc ngẩng/cúi (-180 đến +180)
+            
+        Returns:
+            'front', 'left', 'right', 'up', 'down'
+        """
+        # Tăng ngưỡng lên 20° để dễ phân biệt hơn
+        # Ưu tiên YAW (trái/phải) TRƯỚC, sau đó mới đến pitch (lên/xuống)
+        
+        # Kiểm tra yaw (trái/phải) trước
+        if abs(yaw) > 20:  # Nếu xoay trái/phải rõ ràng
+            if yaw < -20:
+                return 'left'    # Xoay trái
+            elif yaw > 20:
+                return 'right'   # Xoay phải
+        
+        # Sau đó mới kiểm tra pitch (lên/xuống)
+        if abs(pitch) > 20:  # Nếu ngẩng/cúi rõ ràng
+            if pitch > 20:
+                return 'up'      # Ngẩng đầu
+            elif pitch < -20:
+                return 'down'    # Cúi đầu
+        
+        # Nếu cả yaw và pitch đều nhỏ → chính diện
+        return 'front'
 
     def _validate_image(self, image: np.ndarray) -> bool:
         """Kiểm tra ảnh đầu vào hợp lệ"""

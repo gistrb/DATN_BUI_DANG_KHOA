@@ -20,14 +20,36 @@
                     </select>
                 </div>
 
-                <div class="text-center mb-3">
+                <div class="text-center mb-3" style="position: relative; display: inline-block;">
                     <video id="video" width="640" height="480" autoplay></video>
                     <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+                    <!-- Canvas overlay để vẽ bounding box -->
+                    <canvas id="overlay" width="640" height="480"
+                        style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+
+                    <!-- Hướng dẫn tư thế hiện tại -->
+                    <div id="poseInstruction" class="alert alert-primary mt-2"
+                        style="font-size: 20px; font-weight: bold;">
+                        Chọn nhân viên và nhấn "Bắt đầu thu thập"
+                    </div>
+
+                    <!-- Feedback tư thế -->
+                    <div id="poseFeedback" class="mt-2" style="display: none;">
+                        <span id="poseStatus" class="badge bg-secondary">
+                            <span id="poseIcon">⏳</span>
+                            <span id="poseText">Đang kiểm tra...</span>
+                        </span>
+                    </div>
                 </div>
 
+                <!-- Progress cho tư thế hiện tại -->
+                <div class="progress mb-2" style="height: 20px;">
+                    <div id="currentPoseProgress" class="progress-bar bg-info" style="width: 0%;">0/5</div>
+                </div>
+
+                <!-- Progress tổng thể -->
                 <div class="progress mb-3" style="height: 25px;">
-                    <div id="progressBar" class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0"
-                        aria-valuemin="0" aria-valuemax="100">0/20</div>
+                    <div id="totalProgress" class="progress-bar bg-success" style="width: 0%;">0/20</div>
                 </div>
 
                 <div class="text-center">
@@ -47,18 +69,35 @@
 <script>
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
+    const overlay = document.getElementById('overlay');
     const startBtn = document.getElementById('startBtn');
     const captureBtn = document.getElementById('captureBtn');
     const employeeSelect = document.getElementById('employeeSelect');
     const resultDiv = document.getElementById('result');
-    const progressBar = document.getElementById('progressBar');
+    const poseInstructionDiv = document.getElementById('poseInstruction');
+    const poseFeedbackDiv = document.getElementById('poseFeedback');
+    const poseStatusSpan = document.getElementById('poseStatus');
+    const poseIconSpan = document.getElementById('poseIcon');
+    const poseTextSpan = document.getElementById('poseText');
+    const currentPoseProgress = document.getElementById('currentPoseProgress');
+    const totalProgress = document.getElementById('totalProgress');
     const ctx = canvas.getContext('2d');
+    const overlayCtx = overlay.getContext('2d');
 
     let stream = null;
-    let captureInterval = null;
-    let captures = [];
-    const REQUIRED_CAPTURES = 20;
-    const CAPTURE_INTERVAL = 500; // 0.5 giây
+    let currentStageIndex = 0;
+    let currentStageCaptures = 0;
+    let allCaptures = [];
+    let isDuplicateChecking = false;
+
+    // Định nghĩa các giai đoạn tư thế
+    const POSE_STAGES = [
+        { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 5, color: '#0d6efd' },
+        { pose: 'left', name: '↪️ Xoay mặt sang TRÁI nhẹ', required: 5, color: '#198754' },
+        { pose: 'right', name: '↩️ Xoay mặt sang PHẢI nhẹ', required: 5, color: '#198754' },
+        { pose: 'up', name: '⬆️ Ngẩng đầu lên nhẹ', required: 3, color: '#fd7e14' },
+        { pose: 'down', name: '⬇️ Cúi đầu xuống nhẹ', required: 2, color: '#fd7e14' }
+    ];
 
     // Khởi tạo camera
     async function initCamera() {
@@ -77,32 +116,184 @@
         }
     }
 
-    function updateProgress(count) {
-        const percentage = (count / REQUIRED_CAPTURES) * 100;
-        progressBar.style.width = percentage + '%';
-        progressBar.setAttribute('aria-valuenow', percentage);
-        progressBar.textContent = `${count}/${REQUIRED_CAPTURES}`;
+    function updateStageUI() {
+        const stage = POSE_STAGES[currentStageIndex];
+        poseInstructionDiv.textContent = `${stage.name} (${currentStageCaptures}/${stage.required})`;
+        poseInstructionDiv.style.backgroundColor = stage.color;
+        poseInstructionDiv.style.color = 'white';
     }
 
+    function updateProgress() {
+        const stage = POSE_STAGES[currentStageIndex];
+
+        // Progress tư thế hiện tại
+        const stagePercent = (currentStageCaptures / stage.required) * 100;
+        currentPoseProgress.style.width = stagePercent + '%';
+        currentPoseProgress.textContent = `${currentStageCaptures}/${stage.required}`;
+
+        // Progress tổng thể
+        const totalPercent = (allCaptures.length / 20) * 100;
+        totalProgress.style.width = totalPercent + '%';
+        totalProgress.textContent = `${allCaptures.length}/20`;
+    }
+
+    function showPoseFeedback(isCorrect, message) {
+        if (isCorrect) {
+            poseIconSpan.textContent = '✅';
+            poseStatusSpan.className = 'badge bg-success';
+        } else {
+            poseIconSpan.textContent = '❌';
+            poseStatusSpan.className = 'badge bg-warning';
+        }
+        poseTextSpan.textContent = message;
+    }
+
+    function drawBoundingBox(bbox) {
+        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+        overlayCtx.strokeStyle = '#00ff00';
+        overlayCtx.lineWidth = 3;
+        overlayCtx.strokeRect(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]);
+    }
+
+    // Hàm đệ quy xử lý từng frame tuần tự
     async function startCapturing() {
+        currentStageIndex = 0;
+        currentStageCaptures = 0;
+        allCaptures = [];
+        isDuplicateChecking = false;
+        let isRunning = true; // Use local flag to control the loop
+
         startBtn.style.display = 'none';
         captureBtn.style.display = 'inline-block';
-        captures = [];
-        updateProgress(0);
+        poseFeedbackDiv.style.display = 'block';
 
-        captureInterval = setInterval(async () => {
-            if (captures.length >= REQUIRED_CAPTURES) {
-                clearInterval(captureInterval);
+        updateStageUI();
+        updateProgress();
+
+        const processFrame = async () => {
+            if (!isRunning) return;
+
+            // Kiểm tra hoàn thành
+            if (currentStageIndex >= POSE_STAGES.length) {
+                isRunning = false;
                 await registerFaces();
                 return;
             }
 
-            // Chụp ảnh từ video
+            // Lấy frame hiện tại
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const imageData = canvas.toDataURL('image/jpeg');
-            captures.push(imageData);
-            updateProgress(captures.length);
-        }, CAPTURE_INTERVAL);
+
+            try {
+                // Kiểm tra tư thế
+                const response = await fetch('/check-pose/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                const poseData = await response.json();
+
+                if (poseData.success) {
+                    const currentStage = POSE_STAGES[currentStageIndex];
+                    const detectedPose = poseData.pose_type;
+
+                    // Vẽ bounding box
+                    drawBoundingBox(poseData.bbox);
+
+                    if (detectedPose === currentStage.pose) {
+                        // ✅ Đúng tư thế - Chụp!
+                        allCaptures.push(imageData);
+                        currentStageCaptures++;
+
+                        showPoseFeedback(true, `✅ Đúng! (${currentStageCaptures}/${currentStage.required})`);
+                        updateProgress();
+
+                        // Kiểm tra xem đã đủ mẫu cho tư thế này chưa
+                        if (currentStageCaptures >= currentStage.required) {
+                            // Nếu vừa hoàn thành stage FRONT, kiểm tra duplicate
+                            if (currentStage.pose === 'front' && !isDuplicateChecking) {
+                                isDuplicateChecking = true; // Đánh dấu đang kiểm tra
+                                showPoseFeedback(true, '🔍 Đang kiểm tra trùng lặp...');
+
+                                try {
+                                    const checkResponse = await fetch('/check-duplicate/', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ image: imageData })
+                                    });
+
+                                    const checkData = await checkResponse.json();
+
+                                    if (checkData.success && checkData.is_duplicate) {
+                                        // Khuôn mặt đã tồn tại - dừng lại
+                                        isRunning = false;
+
+                                        Swal.fire({
+                                            title: 'Khuôn mặt đã tồn tại!',
+                                            html: `
+                                                <p><strong>Lỗi:</strong> Khuôn mặt này đã được đăng ký trong hệ thống</p>
+                                                <p class="mt-2"><strong>Trùng với nhân viên:</strong></p>
+                                                <p>${checkData.employee_name} (${checkData.employee_id})</p>
+                                            `,
+                                            icon: 'error',
+                                            confirmButtonText: 'OK'
+                                        });
+
+                                        // Reset UI
+                                        captureBtn.style.display = 'none';
+                                        startBtn.style.display = 'inline-block';
+                                        startBtn.disabled = false;
+                                        poseFeedbackDiv.style.display = 'none';
+                                        poseInstructionDiv.textContent = 'Chọn nhân viên và nhấn "Bắt đầu thu thập"';
+                                        poseInstructionDiv.style.backgroundColor = '';
+                                        poseInstructionDiv.className = 'alert alert-primary mt-2';
+                                        overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+                                        allCaptures = [];
+                                        currentStageIndex = 0;
+                                        currentStageCaptures = 0;
+                                        updateProgress();
+                                        return; // Dừng hẳn
+                                    }
+
+                                    // Không trùng - tiếp tục
+                                    showPoseFeedback(true, '✅ Không trùng - tiếp tục!');
+                                } catch (error) {
+                                    console.error('Error checking duplicate:', error);
+                                }
+                            }
+
+                            // Chuyển sang tư thế tiếp theo
+                            currentStageIndex++;
+                            currentStageCaptures = 0;
+
+                            if (currentStageIndex < POSE_STAGES.length) {
+                                updateStageUI();
+                                // Delay 1 giây để người dùng chuẩn bị
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        }
+                    } else {
+                        // ❌ Sai tư thế
+                        showPoseFeedback(false, `❌ Cần: ${currentStage.name}`);
+                    }
+                } else {
+                    showPoseFeedback(false, '❌ Không phát hiện khuôn mặt');
+                    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+                }
+            } catch (error) {
+                console.error('Error checking pose:', error);
+                showPoseFeedback(false, '❌ Lỗi kiểm tra tư thế');
+            }
+
+            // Gọi đệ quy sau 500ms
+            if (isRunning) {
+                setTimeout(processFrame, 500);
+            }
+        };
+
+        // Bắt đầu vòng lặp
+        processFrame();
     }
 
     async function registerFaces() {
@@ -123,13 +314,12 @@
                 },
                 body: JSON.stringify({
                     employee_id: employeeId,
-                    images: captures
+                    images: allCaptures
                 })
             });
 
             const data = await response.json();
             if (data.success) {
-                // Format thời gian theo múi giờ Việt Nam
                 const now = new Date();
                 const options = {
                     timeZone: 'Asia/Ho_Chi_Minh',
@@ -163,7 +353,6 @@
                     showConfirmButton: true
                 });
 
-                // Tự động reset form sau 5 giây
                 setTimeout(() => {
                     employeeSelect.value = '';
                     startBtn.disabled = true;
@@ -178,6 +367,7 @@
                         <li>Ánh sáng đầy đủ</li>
                         <li>Khuôn mặt nằm trong khung hình</li>
                         <li>Không có vật cản che khuôn mặt</li>
+                        <li>Làm đúng theo hướng dẫn tư thế</li>
                     </ul>
                 `,
                     icon: 'error'
@@ -194,8 +384,15 @@
             captureBtn.style.display = 'none';
             startBtn.style.display = 'inline-block';
             startBtn.disabled = false;
-            captures = [];
-            updateProgress(0);
+            poseFeedbackDiv.style.display = 'none';
+            poseInstructionDiv.textContent = 'Chọn nhân viên và nhấn "Bắt đầu thu thập"';
+            poseInstructionDiv.style.backgroundColor = '';
+            poseInstructionDiv.className = 'alert alert-primary mt-2';
+            overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+            allCaptures = [];
+            currentStageIndex = 0;
+            currentStageCaptures = 0;
+            updateProgress();
         }
     }
 

@@ -178,10 +178,102 @@ def base64_to_image(base64_string):
     return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
 @csrf_exempt
-@login_required
+def check_pose(request):
+    """API endpoint kiểm tra tư thế khuôn mặt"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_data = data.get('image')
+            
+            if not image_data:
+                return JsonResponse({'success': False, 'error': 'No image provided'}, status=400)
+            
+            # Chuyển base64 thành image
+            image = base64_to_image(image_data)
+            if image is None:
+                return JsonResponse({'success': False, 'error': 'Invalid image data'}, status=400)
+            
+            # Phát hiện tư thế
+            pose_info = face_processor.detect_pose(image)
+            
+            if pose_info:
+                return JsonResponse({
+                    'success': True,
+                    'yaw': pose_info['yaw'],
+                    'pitch': pose_info['pitch'],
+                    'roll': pose_info['roll'],
+                    'pose_type': pose_info['pose_type'],
+                    'bbox': pose_info['bbox']
+                })
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No face detected or pose not supported'
+                }, status=400)
+                
+        except Exception as e:
+            print(f"[check_pose] Error: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@csrf_exempt
+def check_duplicate(request):
+    """API endpoint kiểm tra khuôn mặt trùng lặp"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            image_data = data.get('image')
+            
+            if not image_data:
+                return JsonResponse({'success': False, 'error': 'No image provided'}, status=400)
+            
+            # Chuyển base64 thành image
+            image = base64_to_image(image_data)
+            embedding = face_processor.get_face_embedding(image)
+            
+            if embedding is None:
+                return JsonResponse({'success': False, 'error': 'No face detected'}, status=400)
+            
+            # Kiểm tra trùng lặp
+            existing_face = face_processor.verify_face(embedding)
+            
+            if existing_face:
+                return JsonResponse({
+                    'success': True,
+                    'is_duplicate': True,
+                    'employee_id': existing_face['employee_id'],
+                    'employee_name': existing_face['full_name']
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'is_duplicate': False
+                })
+                
+        except Exception as e:
+            print(f"[check_duplicate] Error: {e}")
+            return JsonResponse({'success': False, 'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+@csrf_exempt
+# @login_required  <-- Commented out to debug/handle API requests better
 def register_face(request):
     """API endpoint đăng ký khuôn mặt với nhiều mẫu"""
+    print(f"DEBUG: register_face called. User: {request.user}, Is Authenticated: {request.user.is_authenticated}")
+    
+    # Check login manually for API
+    if not request.user.is_authenticated:
+         # Try to see if there's any session info provided?
+         print("DEBUG: User is NOT authenticated. Cookies:", request.COOKIES)
+         return JsonResponse({'error': 'Authentication required. Please login again.'}, status=401)
+    
     if not request.user.is_staff:
+        print("DEBUG: Permission denied. User is not staff.")
         return JsonResponse({'error': 'Permission denied'}, status=403)
 
     # Lấy danh sách nhân viên chưa có face_embeddings và đang active
@@ -192,9 +284,11 @@ def register_face(request):
 
     if request.method == 'POST':
         try:
+            print("DEBUG: Processing POST request")
             data = json.loads(request.body)
             employee_id = data.get('employee_id')
             image_data_list = data.get('images', [])
+            print(f"DEBUG: Data received. Employee ID: {employee_id}, Image count: {len(image_data_list)}")
 
             if not image_data_list:
                 return JsonResponse({'error': 'Không có ảnh được cung cấp'}, status=400)

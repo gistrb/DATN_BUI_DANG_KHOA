@@ -2,20 +2,30 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 import { registerFace } from '../services/api';
-import axios from 'axios';
+import api from '../services/api';
 
 const RegisterFace = () => {
     const webcamRef = useRef(null);
+    const canvasRef = useRef(null);
     const [employees, setEmployees] = useState([]);
     const [selectedEmployee, setSelectedEmployee] = useState('');
-    const [captures, setCaptures] = useState([]);
+    const [allCaptures, setAllCaptures] = useState([]);
+    const [currentStageIndex, setCurrentStageIndex] = useState(0);
+    const [currentStageCaptures, setCurrentStageCaptures] = useState(0);
     const [isCapturing, setIsCapturing] = useState(false);
     const [message, setMessage] = useState('');
+    const [poseFeedback, setPoseFeedback] = useState('');
     const [loading, setLoading] = useState(false);
+    const [isDuplicateChecking, setIsDuplicateChecking] = useState(false);
     const navigate = useNavigate();
 
-    const REQUIRED_CAPTURES = 20;
-    const CAPTURE_INTERVAL = 500;
+    const POSE_STAGES = [
+        { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 5, color: '#0d6efd' },
+        { pose: 'left', name: '↪️ Xoay mặt sang TRÁI nhẹ', required: 5, color: '#198754' },
+        { pose: 'right', name: '↩️ Xoay mặt sang PHẢI nhẹ', required: 5, color: '#198754' },
+        { pose: 'up', name: '⬆️ Ngẩng đầu lên nhẹ', required: 3, color: '#fd7e14' },
+        { pose: 'down', name: '⬇️ Cúi đầu xuống nhẹ', required: 2, color: '#fd7e14' }
+    ];
 
     // Check if user is admin
     useEffect(() => {
@@ -35,7 +45,7 @@ const RegisterFace = () => {
     useEffect(() => {
         const fetchEmployees = async () => {
             try {
-                const response = await axios.get('http://127.0.0.1:8000/api/employees/');
+                const response = await api.get('/api/employees/');
                 setEmployees(response.data.employees || []);
             } catch (error) {
                 console.error('Error fetching employees:', error);
@@ -49,6 +59,15 @@ const RegisterFace = () => {
         navigate('/');
     };
 
+    // Use refs for mutable state in async loop to avoid stale closures and race conditions
+    const stateRef = useRef({
+        stageIndex: 0,
+        stageCaptures: 0,
+        totalCaptures: [],
+        duplicateChecked: false,
+        isRunning: false
+    });
+
     const startCapturing = useCallback(() => {
         if (!selectedEmployee) {
             setMessage({ type: 'error', text: 'Vui lòng chọn nhân viên' });
@@ -56,27 +75,124 @@ const RegisterFace = () => {
         }
 
         setIsCapturing(true);
-        setCaptures([]);
-        setMessage({ type: 'info', text: 'Đang thu thập mẫu khuôn mặt...' });
+        setAllCaptures([]);
+        setCurrentStageIndex(0);
+        setCurrentStageCaptures(0);
+        setIsDuplicateChecking(false);
+        setMessage({ type: 'info', text: 'Đang bắt đầu thu thập...' });
 
-        let count = 0;
-        const interval = setInterval(() => {
-            if (count >= REQUIRED_CAPTURES) {
-                clearInterval(interval);
+        // Reset state ref
+        stateRef.current = {
+            stageIndex: 0,
+            stageCaptures: 0,
+            totalCaptures: [],
+            duplicateChecked: false,
+            isRunning: true
+        };
+
+        const processFrame = async () => {
+            // Check if user stopped
+            if (!stateRef.current.isRunning) return;
+
+            const { stageIndex, stageCaptures } = stateRef.current;
+
+            // Check if done
+            if (stageIndex >= POSE_STAGES.length) {
+                stateRef.current.isRunning = false;
                 setIsCapturing(false);
-                handleRegister();
+                handleRegisterWithCaptures(stateRef.current.totalCaptures);
                 return;
             }
 
-            const imageSrc = webcamRef.current.getScreenshot();
+            const imageSrc = webcamRef.current?.getScreenshot();
+
             if (imageSrc) {
-                setCaptures(prev => [...prev, imageSrc]);
-                count++;
+                try {
+                    // Check pose
+                    const poseResponse = await api.post('/check-pose/', {
+                        image: imageSrc
+                    });
+
+                    const poseData = poseResponse.data;
+
+                    if (poseData.success) {
+                        const currentStage = POSE_STAGES[stageIndex];
+                        const detectedPose = poseData.pose_type;
+
+                        if (detectedPose === currentStage.pose) {
+                            // Correct pose - capture
+                            stateRef.current.totalCaptures.push(imageSrc);
+                            stateRef.current.stageCaptures++;
+
+                            const newStageCaptures = stateRef.current.stageCaptures;
+
+                            // Update UI
+                            setAllCaptures([...stateRef.current.totalCaptures]);
+                            setCurrentStageCaptures(newStageCaptures);
+                            setPoseFeedback(`✅ Đúng! (${newStageCaptures}/${currentStage.required})`);
+
+                            // Check if stage complete
+                            if (newStageCaptures >= currentStage.required) {
+                                // Early duplicate check after front stage
+                                if (currentStage.pose === 'front' && !stateRef.current.duplicateChecked) {
+                                    stateRef.current.duplicateChecked = true;
+                                    setPoseFeedback('🔍 Đang kiểm tra trùng lặp...');
+
+                                    try {
+                                        const checkResponse = await api.post('/check-duplicate/', {
+                                            image: imageSrc
+                                        });
+
+                                        if (checkResponse.data.success && checkResponse.data.is_duplicate) {
+                                            stateRef.current.isRunning = false;
+                                            setIsCapturing(false);
+                                            setMessage({
+                                                type: 'error',
+                                                text: `Khuôn mặt đã tồn tại! Trùng với: ${checkResponse.data.employee_name} (${checkResponse.data.employee_id})`
+                                            });
+                                            return; // Stop loop
+                                        }
+
+                                        setPoseFeedback('✅ Không trùng - tiếp tục!');
+                                    } catch (error) {
+                                        console.error('Error checking duplicate:', error);
+                                    }
+                                }
+
+                                // Move to next stage
+                                stateRef.current.stageIndex++;
+                                stateRef.current.stageCaptures = 0;
+
+                                setCurrentStageIndex(stateRef.current.stageIndex);
+                                setCurrentStageCaptures(0);
+
+                                // Delay before next stage
+                                await new Promise(resolve => setTimeout(resolve, 1000));
+                            }
+                        } else {
+                            setPoseFeedback(`❌ Cần: ${currentStage.name}`);
+                        }
+                    } else {
+                        setPoseFeedback('❌ Không phát hiện khuôn mặt');
+                    }
+                } catch (error) {
+                    console.error('Error checking pose:', error);
+                    setPoseFeedback('❌ Lỗi kiểm tra tư thế');
+                }
             }
-        }, CAPTURE_INTERVAL);
+
+            // Schedule next frame only if still running
+            if (stateRef.current.isRunning) {
+                setTimeout(processFrame, 500);
+            }
+        };
+
+        // Start the loop
+        processFrame();
+
     }, [selectedEmployee]);
 
-    const handleRegister = async () => {
+    const handleRegisterWithCaptures = async (captures) => {
         setLoading(true);
         setMessage({ type: 'info', text: 'Đang xử lý...' });
 
@@ -87,21 +203,25 @@ const RegisterFace = () => {
                     type: 'success',
                     text: `Đăng ký thành công cho ${data.employee.name}! Đã lưu ${data.samples_count} mẫu.`
                 });
-                setCaptures([]);
+                setAllCaptures([]);
                 setSelectedEmployee('');
                 setTimeout(() => window.location.reload(), 3000);
             } else {
                 setMessage({ type: 'error', text: data.error || 'Đăng ký thất bại' });
             }
         } catch (error) {
+            console.error('FAILED TO REGISTER:', error);
             setMessage({
                 type: 'error',
-                text: error.error || error.details || 'Đã xảy ra lỗi khi đăng ký'
+                text: error.error || error.details || error.message || 'Đã xảy ra lỗi khi đăng ký'
             });
         } finally {
             setLoading(false);
+            setIsCapturing(false);
         }
     };
+
+    const currentStage = POSE_STAGES[currentStageIndex] || POSE_STAGES[0];
 
     return (
         <div className="min-h-screen bg-gray-100 py-10">
@@ -134,7 +254,7 @@ const RegisterFace = () => {
                         </select>
                     </div>
 
-                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-6">
+                    <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-4">
                         <Webcam
                             audio={false}
                             ref={webcamRef}
@@ -146,15 +266,48 @@ const RegisterFace = () => {
                                 facingMode: "user"
                             }}
                         />
+                        <canvas ref={canvasRef} className="absolute top-0 left-0" />
                     </div>
 
+                    {/* Pose Instruction */}
+                    {isCapturing && (
+                        <div
+                            className="p-3 mb-3 rounded text-center text-white text-lg font-bold"
+                            style={{ backgroundColor: currentStage.color }}
+                        >
+                            {currentStage.name} ({currentStageCaptures}/{currentStage.required})
+                        </div>
+                    )}
+
+                    {/* Pose Feedback */}
+                    {poseFeedback && isCapturing && (
+                        <div className="text-center mb-3">
+                            <span className="inline-block px-4 py-2 bg-blue-100 text-blue-700 rounded font-semibold">
+                                {poseFeedback}
+                            </span>
+                        </div>
+                    )}
+
+                    {/* Current Stage Progress */}
+                    <div className="mb-2">
+                        <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
+                            <div
+                                className="bg-blue-600 h-full flex items-center justify-center text-white text-xs font-bold transition-all duration-300"
+                                style={{ width: `${(currentStageCaptures / currentStage.required) * 100}%` }}
+                            >
+                                {currentStageCaptures > 0 && `${currentStageCaptures}/${currentStage.required}`}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Total Progress */}
                     <div className="mb-6">
                         <div className="bg-gray-200 rounded-full h-6 overflow-hidden">
                             <div
-                                className="bg-blue-600 h-full flex items-center justify-center text-white text-sm font-bold transition-all duration-300"
-                                style={{ width: `${(captures.length / REQUIRED_CAPTURES) * 100}%` }}
+                                className="bg-green-600 h-full flex items-center justify-center text-white text-sm font-bold transition-all duration-300"
+                                style={{ width: `${(allCaptures.length / 20) * 100}%` }}
                             >
-                                {captures.length}/{REQUIRED_CAPTURES}
+                                {allCaptures.length}/20
                             </div>
                         </div>
                     </div>

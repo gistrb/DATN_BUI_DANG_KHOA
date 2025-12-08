@@ -12,6 +12,8 @@ urlpatterns = [
     
     # API Endpoints (for React & Mobile)
     path('process-attendance/', views.process_attendance, name='process_attendance'),
+    path('check-pose/', views.check_pose, name='check_pose'),
+    path('check-duplicate/', views.check_duplicate, name='check_duplicate'),
     
     # Employee management
     path('employees/', views.employee_list, name='employee_list'),

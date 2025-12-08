@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 
 // Replace with your computer's local IP address
 // Use local IP instead of localtunnel to avoid HTML warning page
-const API_URL = 'http://192.168.0.104:8000/api';
+const API_URL = 'http://192.168.0.105:8000/api';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
