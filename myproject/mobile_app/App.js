@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-// Replace with your computer's local IP address
-// Use local IP instead of localtunnel to avoid HTML warning page
-const API_URL = 'http://192.168.0.105:8000/api';
+const API_URL = 'http://192.168.0.100:8000/api';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -32,12 +30,8 @@ export default function App() {
         body: JSON.stringify({ username, password }),
       });
 
-      // Log raw response text before parsing
       const responseText = await response.text();
-      console.log('Login Response Text:', responseText);
-
       const data = JSON.parse(responseText);
-      console.log('Login Response Parsed:', data);
 
       if (data.success) {
         setUserInfo(data.user);
@@ -63,17 +57,12 @@ export default function App() {
 
   const fetchData = async (employeeId) => {
     try {
-      console.log('Fetching data for employee:', employeeId);
-
       // Fetch Stats
       const statsRes = await fetch(`${API_URL}/stats/${employeeId}/`, {
         headers: { 'Bypass-Tunnel-Reminder': 'true' }
       });
       const statsText = await statsRes.text();
-      console.log('Stats Response Text:', statsText);
-
       const statsData = JSON.parse(statsText);
-      console.log('Stats Response Parsed:', statsData);
       if (statsData.success) setStats(statsData.stats);
 
       // Fetch History
@@ -81,10 +70,7 @@ export default function App() {
         headers: { 'Bypass-Tunnel-Reminder': 'true' }
       });
       const historyText = await historyRes.text();
-      console.log('History Response Text:', historyText);
-
       const historyData = JSON.parse(historyText);
-      console.log('History Response Parsed:', historyData);
       if (historyData.success) setHistory(historyData.history);
 
     } catch (error) {

@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-import insightface
 from insightface.app import FaceAnalysis
 from typing import Optional, List, Tuple, Union, Dict, Any
 import os
@@ -14,10 +13,85 @@ class FaceProcessor:
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
         # Ngưỡng similarity cho ArcFace (Cosine Similarity)
-        # Tăng lên 0.5 để giảm nhầm lẫn giữa các nhân viên (cải thiện từ 0.4)
-        self.similarity_threshold = 0.5
+        # Ngưỡng 0.75 cho độ chính xác cao
+        self.similarity_threshold = 0.75
         
         self.min_face_size = (64, 64)
+        
+        # Cấu hình Top-K matching
+        self.top_k = 3  # Số lượng similarity cao nhất để tính trung bình
+
+    def enhance_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Cải thiện chất lượng ảnh trước khi nhận diện
+        Sử dụng CLAHE và denoise để tăng độ chính xác
+        """
+        try:
+            if image is None:
+                return None
+            
+            # Chuyển sang LAB color space
+            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            
+            # Áp dụng CLAHE (Contrast Limited Adaptive Histogram Equalization)
+            # Giúp cân bằng độ sáng và tăng contrast
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            l_enhanced = clahe.apply(l)
+            
+            # Merge lại
+            lab_enhanced = cv2.merge([l_enhanced, a, b])
+            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
+            
+            # Giảm nhiễu nhẹ (bilateral filter giữ nguyên cạnh)
+            enhanced = cv2.bilateralFilter(enhanced, 5, 50, 50)
+            
+            return enhanced
+            
+        except Exception as e:
+            print(f"[enhance_image] Lỗi: {e}")
+            return image  # Trả về ảnh gốc nếu lỗi
+
+    def compute_top_k_similarity(self, query_embedding: np.ndarray, 
+                                  stored_embeddings: list, k: int = None) -> float:
+        """
+        Tính similarity sử dụng Top-K average
+        Giảm ảnh hưởng của outlier, tăng độ chính xác
+        
+        Args:
+            query_embedding: Embedding của ảnh cần kiểm tra
+            stored_embeddings: Danh sách embeddings đã lưu
+            k: Số lượng top similarities để tính trung bình
+            
+        Returns:
+            Similarity score trung bình của top-k
+        """
+        if not stored_embeddings:
+            return 0.0
+        
+        k = k or self.top_k
+        
+        # Tính similarity với tất cả embeddings
+        similarities = [self.compare_embeddings(query_embedding, emb) 
+                       for emb in stored_embeddings]
+        
+        # Lấy top-k cao nhất
+        k = min(k, len(similarities))
+        top_similarities = sorted(similarities, reverse=True)[:k]
+        
+        # Tính trung bình có trọng số (similarity cao có trọng số lớn hơn)
+        if len(top_similarities) == 1:
+            return top_similarities[0]
+        
+        # Weighted average: similarity càng cao, trọng số càng lớn
+        weights = [s ** 2 for s in top_similarities]  # Quadratic weighting
+        weighted_sum = sum(s * w for s, w in zip(top_similarities, weights))
+        weight_total = sum(weights)
+        
+        if weight_total == 0:
+            return 0.0
+        
+        return weighted_sum / weight_total
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """
@@ -32,11 +106,31 @@ class FaceProcessor:
             return None
         return image
 
-    def extract_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """Trích xuất embedding sử dụng ArcFace"""
+    def extract_embedding(self, image: np.ndarray, use_enhancement: bool = True) -> Optional[np.ndarray]:
+        """
+        Trích xuất embedding sử dụng ArcFace
+        
+        Args:
+            image: Ảnh đầu vào (BGR format)
+            use_enhancement: Có sử dụng image enhancement không (mặc định True)
+            
+        Returns:
+            Embedding vector đã chuẩn hóa hoặc None nếu không detect được face
+        """
         try:
+            # Áp dụng image enhancement để tăng độ chính xác
+            if use_enhancement:
+                processed_image = self.enhance_image(image)
+            else:
+                processed_image = image
+            
             # InsightFace yêu cầu ảnh BGR (OpenCV format)
-            faces = self.app.get(image)
+            faces = self.app.get(processed_image)
+            
+            # Nếu không tìm thấy face với ảnh enhanced, thử lại với ảnh gốc
+            if not faces and use_enhancement:
+                print("[extract_embedding] Thử lại với ảnh gốc...")
+                faces = self.app.get(image)
             
             if not faces:
                 return None
@@ -47,7 +141,7 @@ class FaceProcessor:
             
             embedding = face.embedding
             
-            # Chuẩn hóa embedding
+            # Chuẩn hóa embedding (L2 normalization)
             norm = np.linalg.norm(embedding)
             if norm > 0:
                 embedding = embedding / norm
@@ -300,15 +394,31 @@ class FaceProcessor:
         return True
 
     def verify_face(self, image: np.ndarray, stored_embeddings: List[np.ndarray] = None) -> Optional[Dict[str, Any]]:
-        """Xác thực khuôn mặt và trả về thông tin nhân viên nếu khớp"""
+        """
+        Xác thực khuôn mặt và trả về thông tin nhân viên nếu khớp
+        
+        Cải tiến (v2.0):
+        - Sử dụng image enhancement trước khi nhận diện
+        - Top-K weighted average matching thay vì max
+        - Trả về confidence level
+        """
         query_embedding = None
         bbox = None
 
         # Kiểm tra xem đầu vào là ảnh hay embedding
         if isinstance(image, np.ndarray) and image.ndim == 3:
-            # Nếu là ảnh, dùng app.get để lấy cả embedding và bbox
+            # Nếu là ảnh, áp dụng enhancement và lấy embedding
             try:
-                faces = self.app.get(image)
+                # Áp dụng image enhancement để tăng độ chính xác
+                enhanced_image = self.enhance_image(image)
+                
+                faces = self.app.get(enhanced_image)
+                
+                # Fallback: thử lại với ảnh gốc nếu không detect được
+                if not faces:
+                    print("[verify_face] Thử lại với ảnh gốc...")
+                    faces = self.app.get(image)
+                
                 if not faces:
                     return None
                 
@@ -348,19 +458,14 @@ class FaceProcessor:
                 if not embs:
                     continue
 
-                similarities = [self.compare_embeddings(query_embedding, stored_emb)
-                              for stored_emb in embs]
+                # Sử dụng Top-K weighted average thay vì max
+                employee_similarity = self.compute_top_k_similarity(query_embedding, embs)
                 
-                if not similarities:
-                    continue
-
-                max_employee_similarity = max(similarities)
-
-                if max_employee_similarity > max_similarity:
-                    max_similarity = max_employee_similarity
+                if employee_similarity > max_similarity:
+                    max_similarity = employee_similarity
                     matched_employee = employee
 
-            if max_similarity >= self.similarity_threshold:
+            if max_similarity >= self.similarity_threshold and matched_employee:
                 result = {
                     'employee_id': matched_employee.employee_id,
                     'full_name': matched_employee.user.get_full_name(),
@@ -371,9 +476,8 @@ class FaceProcessor:
                     'current_status': matched_employee.current_status
                 }
         else:
-            similarities = [self.compare_embeddings(query_embedding, stored_emb)
-                          for stored_emb in stored_embeddings]
-            max_similarity = max(similarities) if similarities else -1
+            # Sử dụng Top-K matching cho stored_embeddings
+            max_similarity = self.compute_top_k_similarity(query_embedding, stored_embeddings)
 
             if max_similarity >= self.similarity_threshold:
                 result = True
