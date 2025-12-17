@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
-const API_URL = 'http://192.168.0.100:8000/api';
+const API_URL = 'http://192.168.0.103:8000/api';
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -15,7 +15,7 @@ export default function App() {
 
   const handleLogin = async () => {
     if (!username || !password) {
-      Alert.alert('Error', 'Please enter username and password');
+      Alert.alert('Thiếu thông tin', 'Vui lòng nhập tên đăng nhập và mật khẩu');
       return;
     }
 
@@ -42,14 +42,47 @@ export default function App() {
           fetchData(data.user.employee_id);
         } else {
           // Admin user - show message
-          Alert.alert('Admin Login', 'You are logged in as admin. This app is for employees only.');
+          Alert.alert('Tài khoản Admin', 'Bạn đã đăng nhập với tài khoản quản trị. Ứng dụng này dành cho nhân viên.');
         }
       } else {
-        Alert.alert('Login Failed', data.message);
+        // Handle specific error cases
+        const statusCode = response.status;
+        
+        if (statusCode === 401) {
+          // Invalid credentials - wrong username or password
+          Alert.alert(
+            'Đăng nhập thất bại',
+            'Tên đăng nhập hoặc mật khẩu không đúng.\n\nVui lòng kiểm tra lại thông tin đăng nhập.',
+            [{ text: 'Thử lại', style: 'default' }]
+          );
+        } else if (statusCode === 403) {
+          // User exists but is not an employee
+          Alert.alert(
+            'Không có quyền truy cập',
+            'Tài khoản của bạn chưa được liên kết với hồ sơ nhân viên.\n\nVui lòng liên hệ quản trị viên.',
+            [{ text: 'Đã hiểu', style: 'default' }]
+          );
+        } else if (statusCode === 400) {
+          Alert.alert('Lỗi dữ liệu', 'Dữ liệu gửi đi không hợp lệ.');
+        } else {
+          Alert.alert('Đăng nhập thất bại', data.message || 'Đã xảy ra lỗi không xác định.');
+        }
       }
     } catch (error) {
       console.error('Login Error:', error);
-      Alert.alert('Error', `Network error: ${error.message}`);
+      
+      // Network or connection errors
+      if (error.message.includes('Network request failed')) {
+        Alert.alert(
+          'Lỗi kết nối',
+          'Không thể kết nối đến máy chủ.\n\nVui lòng kiểm tra:\n• Kết nối mạng\n• Máy chủ đang hoạt động\n• Địa chỉ IP đúng',
+          [{ text: 'Thử lại', style: 'default' }]
+        );
+      } else if (error.message.includes('JSON')) {
+        Alert.alert('Lỗi dữ liệu', 'Phản hồi từ máy chủ không hợp lệ.');
+      } else {
+        Alert.alert('Lỗi', `Đã xảy ra lỗi: ${error.message}`);
+      }
     } finally {
       setLoading(false);
     }
@@ -93,23 +126,23 @@ export default function App() {
       <View style={styles.container}>
         <StatusBar style="auto" />
         <View style={styles.loginBox}>
-          <Text style={styles.title}>Attendance App</Text>
+          <Text style={styles.title}>Chào mừng</Text>
           <TextInput
             style={styles.input}
-            placeholder="Username"
+            placeholder="Tên đăng nhập"
             value={username}
             onChangeText={setUsername}
             autoCapitalize="none"
           />
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder="Mật khẩu"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
           />
           <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Login</Text>}
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Đăng nhập</Text>}
           </TouchableOpacity>
         </View>
       </View>
@@ -120,7 +153,7 @@ export default function App() {
     <View style={styles.container}>
       <StatusBar style="auto" />
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Welcome, {userInfo?.full_name}</Text>
+        <Text style={styles.headerTitle}>Chào mừng, {userInfo?.full_name}</Text>
         <TouchableOpacity onPress={handleLogout}>
           <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
@@ -130,13 +163,9 @@ export default function App() {
         {/* Check if user is admin (no employee_id) */}
         {!userInfo?.employee_id ? (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Admin Account</Text>
+            <Text style={styles.cardTitle}>Tài khoản Admin</Text>
             <Text style={styles.infoText}>
-              This mobile app is designed for employees only.
-              Admin features are available on the web dashboard.
-            </Text>
-            <Text style={[styles.infoText, { marginTop: 10, fontWeight: 'bold' }]}>
-              Please use the web interface at http://localhost:5173 for admin functions.
+              Tài khoản này chỉ dành cho nhân viên.
             </Text>
           </View>
         ) : (
