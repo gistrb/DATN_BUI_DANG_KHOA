@@ -12,45 +12,64 @@ class FaceProcessor:
         self.app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
-        # Ngưỡng similarity cho ArcFace (Cosine Similarity)
-        # Ngưỡng 0.75 cho độ chính xác cao
-        self.similarity_threshold = 0.75
+        # Ngưỡng similarity - giảm xuống để robust hơn với ánh sáng
+        self.similarity_threshold = 0.68
         
         self.min_face_size = (64, 64)
         
         # Cấu hình Top-K matching
-        self.top_k = 3  # Số lượng similarity cao nhất để tính trung bình
+        self.top_k = 3
+        
+        # Trọng số cho ensemble matching (Cosine + L2)
+        self.cosine_weight = 0.6
+        self.l2_weight = 0.4
+
+    def adaptive_gamma_correction(self, image: np.ndarray) -> np.ndarray:
+        """Tự động điều chỉnh gamma dựa trên độ sáng ảnh"""
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        mean_brightness = np.mean(gray)
+        
+        # Tính gamma tự động: ảnh tối -> gamma < 1, ảnh sáng -> gamma > 1
+        if mean_brightness < 80:
+            gamma = 0.6  # Làm sáng ảnh tối
+        elif mean_brightness > 180:
+            gamma = 1.5  # Làm tối ảnh sáng
+        else:
+            gamma = 1.0  # Giữ nguyên
+        
+        if gamma != 1.0:
+            inv_gamma = 1.0 / gamma
+            table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(256)]).astype("uint8")
+            return cv2.LUT(image, table)
+        return image
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        Cải thiện chất lượng ảnh trước khi nhận diện
-        Sử dụng CLAHE và denoise để tăng độ chính xác
-        """
+        """Cải thiện chất lượng ảnh với adaptive gamma + CLAHE"""
         try:
             if image is None:
                 return None
             
-            # Chuyển sang LAB color space
-            lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+            # Bước 1: Adaptive gamma correction
+            gamma_corrected = self.adaptive_gamma_correction(image)
+            
+            # Bước 2: CLAHE trong LAB color space
+            lab = cv2.cvtColor(gamma_corrected, cv2.COLOR_BGR2LAB)
             l, a, b = cv2.split(lab)
             
-            # Áp dụng CLAHE (Contrast Limited Adaptive Histogram Equalization)
-            # Giúp cân bằng độ sáng và tăng contrast
-            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            # Tăng clipLimit lên 3.0 để xử lý ánh sáng tốt hơn
+            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
             l_enhanced = clahe.apply(l)
             
-            # Merge lại
             lab_enhanced = cv2.merge([l_enhanced, a, b])
             enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
             
-            # Giảm nhiễu nhẹ (bilateral filter giữ nguyên cạnh)
+            # Bước 3: Giảm nhiễu nhẹ
             enhanced = cv2.bilateralFilter(enhanced, 5, 50, 50)
             
             return enhanced
             
         except Exception as e:
-            print(f"[enhance_image] Lỗi: {e}")
-            return image  # Trả về ảnh gốc nếu lỗi
+            return image
 
     def compute_top_k_similarity(self, query_embedding: np.ndarray, 
                                   stored_embeddings: list, k: int = None) -> float:
@@ -152,25 +171,40 @@ class FaceProcessor:
             print(f"[extract_embedding] Lỗi: {e}")
             return None
 
-    def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """So sánh độ tương đồng giữa hai embedding bằng Cosine Similarity"""
+    def cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
+        """Cosine Similarity: 1 = giống hoàn toàn, 0 = khác hoàn toàn"""
         try:
-            emb1 = np.array(embedding1).flatten()
-            emb2 = np.array(embedding2).flatten()
-
+            emb1 = np.array(emb1).flatten()
+            emb2 = np.array(emb2).flatten()
             dot_product = np.dot(emb1, emb2)
             norm1 = np.linalg.norm(emb1)
             norm2 = np.linalg.norm(emb2)
-
             if norm1 == 0 or norm2 == 0:
                 return 0.0
-
-            similarity = dot_product / (norm1 * norm2)
-            
-            return float(np.clip(similarity, -1.0, 1.0))
-        except Exception as e:
-            print(f"[compare_embeddings] Lỗi: {e}")
+            return float(np.clip(dot_product / (norm1 * norm2), -1.0, 1.0))
+        except:
             return 0.0
+
+    def l2_distance(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
+        """L2 (Euclidean) Distance: 0 = giống hoàn toàn"""
+        try:
+            emb1 = np.array(emb1).flatten()
+            emb2 = np.array(emb2).flatten()
+            return float(np.linalg.norm(emb1 - emb2))
+        except:
+            return 2.0  # Max distance for normalized vectors
+
+    def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """Ensemble: Kết hợp Cosine Similarity + L2 Distance"""
+        cosine_sim = self.cosine_similarity(embedding1, embedding2)
+        l2_dist = self.l2_distance(embedding1, embedding2)
+        
+        # Convert L2 distance to similarity (0-2 range -> 0-1 similarity)
+        l2_sim = max(0, 1 - (l2_dist / 2))
+        
+        # Weighted ensemble
+        combined = self.cosine_weight * cosine_sim + self.l2_weight * l2_sim
+        return float(combined)
 
     def check_image_quality(self, image: np.ndarray, face_bbox: List[float]) -> Dict[str, Any]:
         """
