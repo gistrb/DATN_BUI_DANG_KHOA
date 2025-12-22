@@ -1,4 +1,4 @@
-# Python
+
 __pycache__/
 *.py[cod]
 *$py.class
@@ -22,7 +22,7 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual Environments
+
 .env
 .venv
 env/
@@ -31,14 +31,15 @@ ENV/
 env.bak/
 venv.bak/
 
-# Django
+
+
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 media/
 
-# Web/Node
+
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -48,14 +49,16 @@ out/
 .nuxt/
 .cache/
 
-# IDE
+
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# OS
+
 .DS_Store
 Thumbs.db
 Desktop.ini
 *.bat
+
+backend/config/settings.py
