@@ -62,3 +62,5 @@ Desktop.ini
 *.bat
 
 backend/config/settings.py
+frontend/src/config/config.js
+mobile/src/config/config.js
