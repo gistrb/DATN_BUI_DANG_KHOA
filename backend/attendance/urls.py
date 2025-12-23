@@ -31,4 +31,5 @@ urlpatterns = [
     path('api/stats/<str:employee_id>/', api.employee_stats_api, name='api_stats'),
     path('api/history/<str:employee_id>/', api.attendance_history_api, name='api_history'),
     path('api/employees/', api.employees_without_face_api, name='api_employees'),
+    path('api/push-token/', views.register_push_token, name='api_push_token'),
 ]

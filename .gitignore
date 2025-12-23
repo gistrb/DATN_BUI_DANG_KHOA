@@ -59,8 +59,11 @@ out/
 .DS_Store
 Thumbs.db
 Desktop.ini
-*.bat
 
 backend/config/settings.py
 frontend/src/config/config.js
 mobile/src/config/config.js
+# Firebase Service Account (contains secrets)
+backend/config/datastoragedemo-99ff9-3abc57b4ec78.json
+backend/config/*-firebase*.json
+backend/config/firebase-*.json

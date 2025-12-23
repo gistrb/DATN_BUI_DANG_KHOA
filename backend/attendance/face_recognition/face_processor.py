@@ -6,34 +6,28 @@ import os
 
 class FaceProcessor:
     def __init__(self):
-        # Khởi tạo InsightFace (ArcFace)
-        # Sử dụng model pack 'buffalo_l' (chứa ArcFace r100)
-        # providers: Ưu tiên CUDA nếu có, sau đó là CPU
         self.app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
-        # Ngưỡng similarity - giảm xuống để robust hơn với ánh sáng
-        self.similarity_threshold = 0.68
+        # Ngưỡng tối ưu cho ArcFace với Cosine Similarity (theo nghiên cứu: 97.86% accuracy)
+        self.similarity_threshold = 0.53
         
         self.min_face_size = (64, 64)
         
-        # Cấu hình Top-K matching
         self.top_k = 3
         
-        # Trọng số cho ensemble matching (Cosine + L2)
-        self.cosine_weight = 0.6
-        self.l2_weight = 0.4
+        # Sử dụng 100% Cosine Similarity (tối ưu cho ArcFace - angular margin loss)
+        self.cosine_weight = 1.0
+        self.l2_weight = 0.0
 
     def adaptive_gamma_correction(self, image: np.ndarray) -> np.ndarray:
-        """Tự động điều chỉnh gamma dựa trên độ sáng ảnh"""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         mean_brightness = np.mean(gray)
         
-        # Tính gamma tự động: ảnh tối -> gamma < 1, ảnh sáng -> gamma > 1
         if mean_brightness < 80:
-            gamma = 0.6  # Làm sáng ảnh tối
+            gamma = 0.6  
         elif mean_brightness > 180:
-            gamma = 1.5  # Làm tối ảnh sáng
+            gamma = 1.5 
         else:
             gamma = 1.0  # Giữ nguyên
         
@@ -195,16 +189,12 @@ class FaceProcessor:
             return 2.0  # Max distance for normalized vectors
 
     def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """Ensemble: Kết hợp Cosine Similarity + L2 Distance"""
-        cosine_sim = self.cosine_similarity(embedding1, embedding2)
-        l2_dist = self.l2_distance(embedding1, embedding2)
-        
-        # Convert L2 distance to similarity (0-2 range -> 0-1 similarity)
-        l2_sim = max(0, 1 - (l2_dist / 2))
-        
-        # Weighted ensemble
-        combined = self.cosine_weight * cosine_sim + self.l2_weight * l2_sim
-        return float(combined)
+        """
+        So sánh embeddings sử dụng Cosine Similarity
+        Tối ưu cho ArcFace vì model được train với Angular Margin Loss
+        """
+        # Sử dụng Cosine Similarity (khuyến nghị cho ArcFace)
+        return self.cosine_similarity(embedding1, embedding2)
 
     def check_image_quality(self, image: np.ndarray, face_bbox: List[float]) -> Dict[str, Any]:
         """

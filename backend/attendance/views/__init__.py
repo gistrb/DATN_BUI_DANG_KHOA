@@ -7,6 +7,7 @@ from .department_views import (
     department_delete, department_detail
 )
 from .employee_views import employee_list, employee_create
+from .push_notification import register_push_token, send_attendance_notification
 
 __all__ = [
     'get_vietnam_now', 'is_leaving_early', 'WORK_START_TIME', 'WORK_END_TIME',
@@ -15,4 +16,5 @@ __all__ = [
     'face_check', 'process_attendance', 'employee_detail',
     'department_list', 'department_create', 'department_update', 'department_delete', 'department_detail',
     'employee_list', 'employee_create',
+    'register_push_token', 'send_attendance_notification',
 ]

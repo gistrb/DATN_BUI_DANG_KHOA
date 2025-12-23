@@ -9,6 +9,7 @@ from ..models import Employee, AttendanceRecord
 from ..face_recognition.face_processor import FaceProcessor
 from .utils import get_vietnam_now, is_leaving_early, WORK_START_TIME
 from .face_views import base64_to_image
+from .push_notification import send_attendance_notification
 
 face_processor = FaceProcessor()
 
@@ -72,6 +73,10 @@ def process_attendance(request):
 
         record.save()
         employee.save()
+
+        # Send push notification to mobile app
+        time_str = now.strftime('%H:%M')
+        send_attendance_notification(employee, is_checking_in, time_str)
 
         return JsonResponse({
             'success': True,

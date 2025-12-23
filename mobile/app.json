@@ -21,10 +21,25 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.mobile_app"
+      "package": "com.anonymous.mobile_app",
+      "googleServicesFile": "./android/app/google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "color": "#4F46E5"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4c39e60b-4a1d-424a-bd35-2a8ba0a9ed0e"
+      }
+    },
+    "owner": "khoa886"
   }
 }

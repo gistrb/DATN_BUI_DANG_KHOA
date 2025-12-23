@@ -23,8 +23,8 @@ const RegisterFace = () => {
 
   const POSE_STAGES = [
     { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 5, color: '#0d6efd' },
-    { pose: 'left', name: '↪️ Xoay mặt sang TRÁI nhẹ', required: 5, color: '#198754' },
-    { pose: 'right', name: '↩️ Xoay mặt sang PHẢI nhẹ', required: 5, color: '#198754' },
+    { pose: 'left', name: '↪️ Xoay mặt nhẹ', required: 5, color: '#198754' },
+    { pose: 'right', name: '↩️ Xoay mặt nhẹ', required: 5, color: '#198754' },
     { pose: 'up', name: '⬆️ Ngẩng đầu lên nhẹ', required: 3, color: '#fd7e14' },
     { pose: 'down', name: '⬇️ Cúi đầu xuống nhẹ', required: 2, color: '#fd7e14' }
   ];

@@ -76,6 +76,7 @@ class Employee(models.Model):
     )
 
     is_active = models.BooleanField(default=True, verbose_name="Tài khoản đang hoạt động")
+    expo_push_token = models.CharField(max_length=255, null=True, blank=True, verbose_name="Expo Push Token")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

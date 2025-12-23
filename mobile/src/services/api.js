@@ -96,3 +96,34 @@ export const fetchEmployeeData = async (employeeId) => {
     history: historyResult.success ? historyResult.history : [],
   };
 };
+
+/**
+ * Register push token with backend
+ * @param {string} pushToken - Expo Push Token
+ * @param {string} employeeId - Employee ID
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const registerPushToken = async (pushToken, employeeId) => {
+  try {
+    const response = await fetch(`${API_URL}/push-token/`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({
+        push_token: pushToken,
+        employee_id: employeeId,
+      }),
+    });
+    
+    const data = await response.json();
+    return {
+      success: data.success,
+      error: data.error,
+    };
+  } catch (error) {
+    console.error('Error registering push token:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+};

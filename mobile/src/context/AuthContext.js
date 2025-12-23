@@ -1,6 +1,12 @@
 import React, { createContext, useState, useContext } from 'react';
 import { Alert } from 'react-native';
-import { login as apiLogin, fetchEmployeeData } from '../services/api';
+import { login as apiLogin, fetchEmployeeData, registerPushToken } from '../services/api';
+import { 
+  initializeNotifications, 
+  scheduleDailyReminder, 
+  cancelAllNotifications,
+  registerForPushNotifications
+} from '../services/notificationService';
 
 const AuthContext = createContext(null);
 
@@ -30,6 +36,18 @@ export const AuthProvider = ({ children }) => {
           const employeeData = await fetchEmployeeData(result.data.user.employee_id);
           setStats(employeeData.stats);
           setHistory(employeeData.history);
+
+          // Initialize notifications after successful login
+          const notificationPermission = await initializeNotifications();
+          if (notificationPermission) {
+            await scheduleDailyReminder();
+            
+            // Register push token for real-time notifications
+            const pushToken = await registerForPushNotifications();
+            if (pushToken) {
+              await registerPushToken(pushToken, result.data.user.employee_id);
+            }
+          }
         } else {
           Alert.alert('Tài khoản Admin', 'Bạn đã đăng nhập với tài khoản quản trị. Ứng dụng này dành cho nhân viên.');
         }
@@ -81,7 +99,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // Cancel all scheduled notifications on logout
+    await cancelAllNotifications();
     setIsLoggedIn(false);
     setUserInfo(null);
     setStats(null);
