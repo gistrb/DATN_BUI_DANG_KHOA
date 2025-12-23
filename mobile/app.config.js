@@ -1,0 +1,50 @@
+import 'dotenv/config';
+
+export default {
+  expo: {
+    name: "mobile_app",
+    slug: "mobile_app",
+    version: "1.0.0",
+    orientation: "portrait",
+    icon: "./assets/icon.png",
+    userInterfaceStyle: "light",
+    newArchEnabled: true,
+    splash: {
+      image: "./assets/splash-icon.png",
+      resizeMode: "contain",
+      backgroundColor: "#ffffff"
+    },
+    ios: {
+      supportsTablet: true
+    },
+    android: {
+      adaptiveIcon: {
+        foregroundImage: "./assets/adaptive-icon.png",
+        backgroundColor: "#ffffff"
+      },
+      edgeToEdgeEnabled: true,
+      package: "com.anonymous.mobile_app",
+      googleServicesFile: "./android/app/google-services.json"
+    },
+    web: {
+      favicon: "./assets/favicon.png"
+    },
+    plugins: [
+      [
+        "expo-notifications",
+        {
+          color: "#4F46E5"
+        }
+      ]
+    ],
+    extra: {
+      eas: {
+        projectId: "4c39e60b-4a1d-424a-bd35-2a8ba0a9ed0e"
+      },
+      apiUrl: process.env.API_URL,
+      appName: process.env.APP_NAME || "Attendance App",
+      appVersion: process.env.APP_VERSION || "1.0.0"
+    },
+    owner: "khoa886"
+  }
+};

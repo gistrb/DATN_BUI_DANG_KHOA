@@ -1,12 +1,12 @@
-﻿export const API_URL = 'http://192.168.0.104:8000/api';
+﻿import Constants from 'expo-constants';
 
-// App Configuration
+const extra = Constants.expoConfig?.extra || {};
+export const API_URL = extra.apiUrl;
+
 export const APP_CONFIG = {
-  appName: 'Attendance App',
-  version: '1.0.0',
+  appName: extra.appName || 'Attendance App',
+  version: extra.appVersion || '1.0.0',
 };
-
-// Request Headers
 export const DEFAULT_HEADERS = {
   'Content-Type': 'application/json',
   'Bypass-Tunnel-Reminder': 'true',
