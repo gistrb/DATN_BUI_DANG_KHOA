@@ -5,6 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 from calendar import monthrange
 import calendar
 import json
+import threading
 from ..models import Employee, AttendanceRecord
 from ..face_recognition.face_processor import FaceProcessor
 from .utils import get_vietnam_now, is_leaving_early, WORK_START_TIME
@@ -74,9 +75,13 @@ def process_attendance(request):
         record.save()
         employee.save()
 
-        # Send push notification to mobile app
+        # Send push notification to mobile app (async - không chờ response)
         time_str = now.strftime('%H:%M')
-        send_attendance_notification(employee, is_checking_in, time_str)
+        threading.Thread(
+            target=send_attendance_notification,
+            args=(employee, is_checking_in, time_str),
+            daemon=True
+        ).start()
 
         return JsonResponse({
             'success': True,
