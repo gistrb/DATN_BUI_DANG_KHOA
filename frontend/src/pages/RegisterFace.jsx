@@ -232,10 +232,8 @@ const RegisterFace = () => {
               audio={false}
               ref={webcamRef}
               screenshotFormat="image/jpeg"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
               videoConstraints={{
-                width: 1280,
-                height: 720,
                 facingMode: "user"
               }}
             />

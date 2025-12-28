@@ -71,7 +71,7 @@ def check_duplicate(request):
             if embedding is None:
                 return JsonResponse({'success': False, 'error': 'No face detected'}, status=400)
             
-            existing_face = face_processor.verify_face(embedding)
+            existing_face = face_processor.verify_face(embedding, check_liveness=False)
             
             if existing_face:
                 return JsonResponse({
@@ -130,7 +130,7 @@ def register_face(request):
                 
                 if embedding is not None:
                     if not checked_duplicate:
-                        existing_face = face_processor.verify_face(embedding)
+                        existing_face = face_processor.verify_face(embedding, check_liveness=False)
                         if existing_face and existing_face['employee_id'] != employee.employee_id:
                             return JsonResponse({
                                 'error': f"Khuôn mặt này đã tồn tại trong hệ thống",

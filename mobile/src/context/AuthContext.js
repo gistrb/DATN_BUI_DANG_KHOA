@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { Alert } from 'react-native';
 import { login as apiLogin, fetchEmployeeData, registerPushToken } from '../services/api';
 import { 
@@ -9,6 +9,19 @@ import {
 } from '../services/notificationService';
 
 const AuthContext = createContext(null);
+
+// Global callback for realtime updates from notifications
+let _refreshDataCallback = null;
+
+export const setRefreshDataCallback = (callback) => {
+  _refreshDataCallback = callback;
+};
+
+export const triggerRealtimeRefresh = () => {
+  if (_refreshDataCallback) {
+    _refreshDataCallback();
+  }
+};
 
 export const AuthProvider = ({ children }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -108,13 +121,25 @@ export const AuthProvider = ({ children }) => {
     setHistory([]);
   };
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     if (userInfo?.employee_id) {
+      console.log('📊 Refreshing employee data...');
       const employeeData = await fetchEmployeeData(userInfo.employee_id);
       setStats(employeeData.stats);
       setHistory(employeeData.history);
+      console.log('✅ Employee data refreshed');
     }
-  };
+  }, [userInfo]);
+
+  // Register refresh callback for realtime updates from notifications
+  useEffect(() => {
+    if (isLoggedIn && userInfo?.employee_id) {
+      setRefreshDataCallback(refreshData);
+    }
+    return () => {
+      setRefreshDataCallback(null);
+    };
+  }, [isLoggedIn, userInfo, refreshData]);
 
   return (
     <AuthContext.Provider

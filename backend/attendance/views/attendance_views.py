@@ -29,7 +29,17 @@ def process_attendance(request):
             return JsonResponse({'error': 'No image data'}, status=400)
 
         image = base64_to_image(image_data)
-        result = face_processor.verify_face(image)
+        # Tạm tắt liveness check để debug (check_liveness=False)
+        result = face_processor.verify_face(image, check_liveness=True)
+        
+        # Kiểm tra nếu phát hiện giả mạo (liveness check)
+        if result and 'error' in result and result['error'] == 'spoof_detected':
+            return JsonResponse({
+                'error': result['message'],
+                'error_type': 'spoof_detected',
+                'liveness_score': result.get('liveness_score', 0),
+                'liveness_message': result.get('liveness_message', '')
+            }, status=400)
         
         if result is None:
             return JsonResponse({

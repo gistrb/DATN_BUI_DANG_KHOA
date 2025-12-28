@@ -20,8 +20,8 @@ const FaceCheck = () => {
   
   const countdownRef = useRef(null);
   const isProcessingRef = useRef(false);
+  const [cooldown, setCooldown] = useState(0); // Cooldown after showing result
 
-  // Initialize MediaPipe Face Detector
   useEffect(() => {
     const initFaceDetector = async () => {
       try {
@@ -32,7 +32,7 @@ const FaceCheck = () => {
         const detector = await FaceDetector.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
-            delegate: "GPU"
+            delegate: "CPU"  // Changed from GPU - Intel Iris không tương thích tốt với WebGPU
           },
           runningMode: "VIDEO"
         });
@@ -55,11 +55,79 @@ const FaceCheck = () => {
     };
   }, []);
 
-  // Detection loop
+  // Oval frame parameters (relative to video dimensions)
+  // centerX = 50%, centerY = 45%, radiusX = 200px (will be calculated based on container)
+  const ovalParams = {
+    centerXRatio: 0.5,
+    centerYRatio: 0.45,
+    // These are approximate ratios - will be adjusted based on actual rendering
+    radiusXRatio: 0.35, // rx=200 relative to ~570px effective width
+    radiusYRatio: 0.56, // ry=270 relative to ~480px height
+  };
+
+  // Check if face bounding box is within the oval frame
+  const isFaceInOval = useCallback((bbox, videoWidth, videoHeight) => {
+    // First check: face must be completely within the camera frame (not cut off at edges)
+    const margin = 10; // 10px margin from edges
+    const isFaceFullyInFrame = 
+      bbox.originX >= margin &&
+      bbox.originY >= margin &&
+      (bbox.originX + bbox.width) <= (videoWidth - margin) &&
+      (bbox.originY + bbox.height) <= (videoHeight - margin);
+
+    if (!isFaceFullyInFrame) {
+      return false; // Face is cut off at the edge
+    }
+
+    // Calculate face center
+    const faceCenterX = bbox.originX + bbox.width / 2;
+    const faceCenterY = bbox.originY + bbox.height / 2;
+
+    // Calculate oval center in video coordinates
+    const ovalCenterX = videoWidth * ovalParams.centerXRatio;
+    const ovalCenterY = videoHeight * ovalParams.centerYRatio;
+    const ovalRadiusX = videoWidth * ovalParams.radiusXRatio;
+    const ovalRadiusY = videoHeight * ovalParams.radiusYRatio;
+
+    // Check if face center is inside oval using ellipse equation: (x-h)²/a² + (y-k)²/b² <= 1
+    const normalizedX = (faceCenterX - ovalCenterX) / ovalRadiusX;
+    const normalizedY = (faceCenterY - ovalCenterY) / ovalRadiusY;
+    const distanceFromCenter = normalizedX * normalizedX + normalizedY * normalizedY;
+
+    // Face center should be inside the oval (< 1), with some tolerance (0.8 = 80% of oval)
+    const isInsideOval = distanceFromCenter < 0.8;
+
+    // Also check that most of the face is within the oval
+    // Check all 4 corners of face bounding box aren't too far outside
+    const corners = [
+      { x: bbox.originX, y: bbox.originY },
+      { x: bbox.originX + bbox.width, y: bbox.originY },
+      { x: bbox.originX, y: bbox.originY + bbox.height },
+      { x: bbox.originX + bbox.width, y: bbox.originY + bbox.height },
+    ];
+
+    let cornersInside = 0;
+    for (const corner of corners) {
+      const nx = (corner.x - ovalCenterX) / ovalRadiusX;
+      const ny = (corner.y - ovalCenterY) / ovalRadiusY;
+      if (nx * nx + ny * ny < 1.1) { // Allow slight overage
+        cornersInside++;
+      }
+    }
+
+    // At least 3 corners should be mostly inside
+    return isInsideOval && cornersInside >= 3;
+  }, []);
+
+  // State for face-in-oval status
+  const [faceInOval, setFaceInOval] = useState(false);
+
+  // Detection loop - throttled to reduce load
   useEffect(() => {
     if (!modelLoaded) return;
 
     let lastVideoTime = -1;
+    let timeoutId = null;
 
     const detectFace = () => {
       if (webcamRef.current && webcamRef.current.video && faceDetectorRef.current) {
@@ -86,12 +154,22 @@ const FaceCheck = () => {
                 
                 if (faceWidthRatio > 0.15 && faceHeightRatio > 0.15) {
                   setFaceDetected(true);
+                  
+                  // Check if face is within the oval frame
+                  const inOval = isFaceInOval(bbox, videoWidth, videoHeight);
+                  setFaceInOval(inOval);
+                  
+                  if (!inOval) {
+                    setCountdown(0); // Reset countdown if face moves out of oval
+                  }
                 } else {
                   setFaceDetected(false);
+                  setFaceInOval(false);
                   setCountdown(0);
                 }
               } else {
                 setFaceDetected(false);
+                setFaceInOval(false);
                 setCountdown(0);
               }
             } catch (error) {
@@ -100,27 +178,53 @@ const FaceCheck = () => {
           }
         }
       }
-      animationRef.current = requestAnimationFrame(detectFace);
+      // Throttle: detect every 200ms instead of every frame (60fps)
+      timeoutId = setTimeout(detectFace, 200);
     };
 
     detectFace();
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
     };
-  }, [modelLoaded]);
+  }, [modelLoaded, isFaceInOval]);
+
+  // Handle cooldown timer after result is closed
+  useEffect(() => {
+    if (cooldown > 0) {
+      const timer = setTimeout(() => {
+        setCooldown(prev => {
+          const newValue = prev - 1;
+          if (newValue > 0) {
+            setStatus(`Chờ ${newValue} giây...`);
+          } else {
+            setStatus('Đưa khuôn mặt vào khung');
+          }
+          return newValue;
+        });
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [cooldown]);
 
   // Handle countdown and auto-capture
   useEffect(() => {
-    if (faceDetected && !loading && countdown < 2) {
+    // Don't process if result is showing or in cooldown
+    if (result || cooldown > 0) return;
+
+    if (faceDetected && faceInOval && !loading && countdown < 2) {
+      // Face is in oval - start countdown
       setStatus(`Giữ yên... (${(2 - countdown).toFixed(1)}s)`);
       countdownRef.current = setTimeout(() => {
         setCountdown(prev => prev + 0.1);
       }, 100);
-    } else if (faceDetected && countdown >= 2 && !loading) {
+    } else if (faceDetected && faceInOval && countdown >= 2 && !loading) {
       handleAutoCapture();
+    } else if (faceDetected && !faceInOval && !loading) {
+      // Face detected but not in oval
+      setStatus('Di chuyển khuôn mặt vào khung oval');
     } else if (!faceDetected && !loading) {
       setStatus('Đưa khuôn mặt vào khung');
     }
@@ -130,7 +234,7 @@ const FaceCheck = () => {
         clearTimeout(countdownRef.current);
       }
     };
-  }, [faceDetected, countdown, loading]);
+  }, [faceDetected, faceInOval, countdown, loading, cooldown, result]);
 
   const handleAutoCapture = async () => {
     if (isProcessingRef.current || loading) return;
@@ -166,32 +270,42 @@ const FaceCheck = () => {
       isProcessingRef.current = false;
       setCountdown(0);
       setFaceDetected(false);
-      setStatus('Đưa khuôn mặt vào khung');
+      setStatus('');
       
+      // Auto-close result after 5 seconds, then start cooldown
       setTimeout(() => {
-        setResult(null);
+        setResult(prev => {
+          if (prev) {
+            // Only start cooldown if result is still showing (not manually closed)
+            setCooldown(3);
+            setStatus('Chờ 3 giây...');
+          }
+          return null;
+        });
       }, 5000);
     }
   };
 
   const closeResult = () => {
     setResult(null);
+    // Start 3-second cooldown after closing result
+    setCooldown(3);
+    setStatus('Chờ 3 giây...');
   };
 
   const progressPercent = (countdown / 2) * 100;
 
   return (
     <div className="fixed inset-0 bg-black">
-      {/* Webcam fullscreen */}
+      {/* Webcam - sử dụng cài đặt mặc định của camera */}
       <Webcam
         audio={false}
         ref={webcamRef}
         screenshotFormat="image/jpeg"
-        className="w-full h-full object-contain"
-        videoConstraints={{ 
-          facingMode: "user",
-          width: 640,
-          height: 480
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain'
         }}
       />
 
@@ -213,23 +327,31 @@ const FaceCheck = () => {
             mask="url(#oval-mask)"
           />
           
-          {/* Oval border - glows green when face detected */}
+          {/* Oval border - yellow when face detected but outside, green when in oval */}
           <ellipse 
             cx="50%" 
             cy="45%" 
             rx="200" 
             ry="270" 
             fill="none" 
-            stroke={faceDetected ? "#22c55e" : "rgba(255,255,255,0.6)"}
+            stroke={
+              faceInOval ? "#22c55e" : 
+              faceDetected ? "#eab308" : 
+              "rgba(255,255,255,0.6)"
+            }
             strokeWidth={faceDetected ? "4" : "3"}
             style={{
-              filter: faceDetected ? "drop-shadow(0 0 15px #22c55e) drop-shadow(0 0 30px #22c55e)" : "none",
+              filter: faceInOval 
+                ? "drop-shadow(0 0 15px #22c55e) drop-shadow(0 0 30px #22c55e)" 
+                : faceDetected 
+                  ? "drop-shadow(0 0 10px #eab308)" 
+                  : "none",
               transition: "all 0.2s ease"
             }}
           />
           
-          {/* Progress ring when face detected */}
-          {faceDetected && countdown > 0 && (
+          {/* Progress ring when face is in oval */}
+          {faceInOval && countdown > 0 && (
             <ellipse 
               cx="50%" 
               cy="45%" 
@@ -266,7 +388,8 @@ const FaceCheck = () => {
       <div className="absolute bottom-32 left-0 right-0 flex flex-col items-center">
         <div className={`px-8 py-4 rounded-full backdrop-blur-sm transition-all ${
           loading ? 'bg-blue-500/80' :
-          faceDetected ? 'bg-green-500/80' : 'bg-white/20'
+          faceInOval ? 'bg-green-500/80' :
+          faceDetected ? 'bg-yellow-500/80' : 'bg-white/20'
         }`}>
           <span className="text-white text-xl font-medium">
             {status}

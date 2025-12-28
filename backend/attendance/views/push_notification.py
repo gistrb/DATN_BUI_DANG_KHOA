@@ -110,6 +110,7 @@ def send_attendance_notification(employee, is_check_in, time_str):
         'action': 'check_in' if is_check_in else 'check_out',
         'time': time_str,
         'employee_id': employee.employee_id,
+        'realtime_update': 'true',
     }
     
     return send_fcm_notification(fcm_token, title, body, data)
@@ -142,6 +143,8 @@ def send_expo_push_notification(employee, is_check_in, time_str):
             'type': 'attendance',
             'action': 'check_in' if is_check_in else 'check_out',
             'time': time_str,
+            'employee_id': employee.employee_id,
+            'realtime_update': 'true',
         },
     }
     
