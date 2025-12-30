@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks';
 import { registerFace } from '../services/api';
 import api from '../services/api';
-import { Button, Select, Alert } from '../components';
+import Swal from 'sweetalert2';
 
 const RegisterFace = () => {
   const webcamRef = useRef(null);
@@ -19,7 +19,7 @@ const RegisterFace = () => {
   const [poseFeedback, setPoseFeedback] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { isAdmin, logout } = useAuth();
+  const { isAdmin } = useAuth();
 
   const POSE_STAGES = [
     { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 5, color: '#0d6efd' },
@@ -31,7 +31,7 @@ const RegisterFace = () => {
 
   useEffect(() => {
     if (!isAdmin()) {
-      alert('Chỉ admin mới có quyền truy cập trang này');
+      Swal.fire('Lỗi', 'Chỉ admin mới có quyền truy cập trang này', 'error');
       navigate('/');
     }
   }, [isAdmin, navigate]);
@@ -48,11 +48,6 @@ const RegisterFace = () => {
     fetchEmployees();
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
-
   const stateRef = useRef({
     stageIndex: 0,
     stageCaptures: 0,
@@ -63,7 +58,7 @@ const RegisterFace = () => {
 
   const startCapturing = useCallback(() => {
     if (!selectedEmployee) {
-      setMessage({ type: 'error', text: 'Vui lòng chọn nhân viên' });
+      setMessage({ type: 'warning', text: 'Vui lòng chọn nhân viên' });
       return;
     }
 
@@ -131,7 +126,7 @@ const RegisterFace = () => {
                       stateRef.current.isRunning = false;
                       setIsCapturing(false);
                       setMessage({
-                        type: 'error',
+                        type: 'danger',
                         text: `Khuôn mặt đã tồn tại! Trùng với: ${checkResponse.data.employee_name} (${checkResponse.data.employee_id})`
                       });
                       return;
@@ -186,12 +181,12 @@ const RegisterFace = () => {
         setSelectedEmployee('');
         setTimeout(() => window.location.reload(), 3000);
       } else {
-        setMessage({ type: 'error', text: data.error || 'Đăng ký thất bại' });
+        setMessage({ type: 'danger', text: data.error || 'Đăng ký thất bại' });
       }
     } catch (error) {
       console.error('FAILED TO REGISTER:', error);
       setMessage({
-        type: 'error',
+        type: 'danger',
         text: error.error || error.details || error.message || 'Đã xảy ra lỗi khi đăng ký'
       });
     } finally {
@@ -202,98 +197,188 @@ const RegisterFace = () => {
 
   const currentStage = POSE_STAGES[currentStageIndex] || POSE_STAGES[0];
 
-  const employeeOptions = employees.map(emp => ({
-    value: emp.employee_id,
-    label: `${emp.full_name} (${emp.employee_id})`
-  }));
-
   return (
-    <div className="min-h-screen bg-gray-100 py-10">
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Đăng ký khuôn mặt nhân viên</h1>
-          <Button onClick={handleLogout} variant="danger">
-            Logout
-          </Button>
+    <div>
+      <h2 className="mb-4">
+        <i className="bi bi-person-badge me-2"></i>
+        Đăng ký khuôn mặt nhân viên
+      </h2>
+
+      <div className="row">
+        <div className="col-lg-8">
+          <div className="card">
+            <div className="card-header bg-warning text-dark">
+              <h5 className="mb-0">
+                <i className="bi bi-camera-video me-2"></i>
+                Thu thập khuôn mặt
+              </h5>
+            </div>
+            <div className="card-body">
+              {/* Employee Selection */}
+              <div className="mb-3">
+                <label className="form-label fw-semibold">Chọn nhân viên:</label>
+                <select
+                  className="form-select"
+                  value={selectedEmployee}
+                  onChange={(e) => setSelectedEmployee(e.target.value)}
+                  disabled={isCapturing || loading}
+                >
+                  <option value="">-- Chọn nhân viên chưa có khuôn mặt --</option>
+                  {employees.map(emp => (
+                    <option key={emp.employee_id} value={emp.employee_id}>
+                      {emp.full_name} ({emp.employee_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Webcam */}
+              <div className="position-relative bg-black rounded overflow-hidden mb-3" style={{ aspectRatio: '16/9' }}>
+                <Webcam
+                  audio={false}
+                  ref={webcamRef}
+                  screenshotFormat="image/jpeg"
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'contain'
+                  }}
+                  videoConstraints={{
+                    facingMode: "user"
+                  }}
+                />
+                <canvas ref={canvasRef} className="position-absolute top-0 start-0" />
+              </div>
+
+              {/* Current Stage Indicator */}
+              {isCapturing && (
+                <div
+                  className="p-3 mb-3 rounded text-center text-white fw-bold fs-5"
+                  style={{ backgroundColor: currentStage.color }}
+                >
+                  {currentStage.name} ({currentStageCaptures}/{currentStage.required})
+                </div>
+              )}
+
+              {/* Pose Feedback */}
+              {poseFeedback && isCapturing && (
+                <div className="text-center mb-3">
+                  <span className="badge bg-primary fs-6 px-3 py-2">
+                    {poseFeedback}
+                  </span>
+                </div>
+              )}
+
+              {/* Stage Progress */}
+              <div className="mb-2">
+                <div className="progress" style={{ height: '20px' }}>
+                  <div
+                    className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                    role="progressbar"
+                    style={{ width: `${(currentStageCaptures / currentStage.required) * 100}%` }}
+                  >
+                    {currentStageCaptures > 0 && `${currentStageCaptures}/${currentStage.required}`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Progress */}
+              <div className="mb-4">
+                <div className="d-flex justify-content-between mb-1">
+                  <small>Tổng tiến độ</small>
+                  <small>{allCaptures.length}/20 ảnh</small>
+                </div>
+                <div className="progress" style={{ height: '25px' }}>
+                  <div
+                    className="progress-bar bg-success"
+                    role="progressbar"
+                    style={{ width: `${(allCaptures.length / 20) * 100}%` }}
+                  >
+                    {allCaptures.length}/20
+                  </div>
+                </div>
+              </div>
+
+              {/* Message Alert */}
+              {message && (
+                <div className={`alert alert-${message.type} mb-3`} role="alert">
+                  {message.text}
+                </div>
+              )}
+
+              {/* Action Button */}
+              <div className="text-center">
+                <button
+                  className="btn btn-lg btn-primary"
+                  onClick={startCapturing}
+                  disabled={!selectedEmployee || isCapturing || loading}
+                >
+                  {isCapturing ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2"></span>
+                      Đang thu thập...
+                    </>
+                  ) : loading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2"></span>
+                      Đang xử lý...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-camera me-2"></i>
+                      Bắt đầu thu thập
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-lg">
-          <Select
-            label="Chọn nhân viên:"
-            value={selectedEmployee}
-            onChange={(e) => setSelectedEmployee(e.target.value)}
-            options={employeeOptions}
-            disabled={isCapturing || loading}
-            required
-          />
-
-          <div className="relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-4">
-            <Webcam
-              audio={false}
-              ref={webcamRef}
-              screenshotFormat="image/jpeg"
-              className="w-full h-full object-contain"
-              videoConstraints={{
-                facingMode: "user"
-              }}
-            />
-            <canvas ref={canvasRef} className="absolute top-0 left-0" />
-          </div>
-
-          {isCapturing && (
-            <div
-              className="p-3 mb-3 rounded text-center text-white text-lg font-bold"
-              style={{ backgroundColor: currentStage.color }}
-            >
-              {currentStage.name} ({currentStageCaptures}/{currentStage.required})
+        <div className="col-lg-4">
+          <div className="card">
+            <div className="card-header bg-info text-white">
+              <h5 className="mb-0">
+                <i className="bi bi-info-circle me-2"></i>
+                Hướng dẫn
+              </h5>
             </div>
-          )}
-
-          {poseFeedback && isCapturing && (
-            <div className="text-center mb-3">
-              <span className="inline-block px-4 py-2 bg-blue-100 text-blue-700 rounded font-semibold">
-                {poseFeedback}
-              </span>
-            </div>
-          )}
-
-          <div className="mb-2">
-            <div className="bg-gray-200 rounded-full h-4 overflow-hidden">
-              <div
-                className="bg-blue-600 h-full flex items-center justify-center text-white text-xs font-bold transition-all duration-300"
-                style={{ width: `${(currentStageCaptures / currentStage.required) * 100}%` }}
-              >
-                {currentStageCaptures > 0 && `${currentStageCaptures}/${currentStage.required}`}
-              </div>
+            <div className="card-body">
+              <ol className="mb-0">
+                <li className="mb-2">Chọn nhân viên từ danh sách</li>
+                <li className="mb-2">Nhấn "Bắt đầu thu thập"</li>
+                <li className="mb-2">Làm theo hướng dẫn tư thế:
+                  <ul className="mt-1">
+                    <li>Nhìn thẳng (5 ảnh)</li>
+                    <li>Xoay trái/phải (mỗi bên 5 ảnh)</li>
+                    <li>Ngẩng lên (3 ảnh)</li>
+                    <li>Cúi xuống (2 ảnh)</li>
+                  </ul>
+                </li>
+                <li className="mb-2">Hệ thống tự động lưu khi đủ ảnh</li>
+              </ol>
             </div>
           </div>
 
-          <div className="mb-6">
-            <div className="bg-gray-200 rounded-full h-6 overflow-hidden">
-              <div
-                className="bg-green-600 h-full flex items-center justify-center text-white text-sm font-bold transition-all duration-300"
-                style={{ width: `${(allCaptures.length / 20) * 100}%` }}
-              >
-                {allCaptures.length}/20
-              </div>
+          {/* Stage Progress List */}
+          <div className="card mt-3">
+            <div className="card-header bg-secondary text-white">
+              <h6 className="mb-0">Các giai đoạn</h6>
             </div>
-          </div>
-
-          {message && (
-            <Alert type={message.type} className="mb-4">
-              {message.text}
-            </Alert>
-          )}
-
-          <div className="text-center">
-            <Button
-              onClick={startCapturing}
-              disabled={!selectedEmployee || isCapturing || loading}
-              loading={isCapturing || loading}
-              size="xl"
-            >
-              {isCapturing ? 'Đang thu thập...' : loading ? 'Đang xử lý...' : 'Bắt đầu thu thập'}
-            </Button>
+            <ul className="list-group list-group-flush">
+              {POSE_STAGES.map((stage, index) => (
+                <li 
+                  key={stage.pose} 
+                  className={`list-group-item d-flex justify-content-between align-items-center ${
+                    index < currentStageIndex ? 'list-group-item-success' :
+                    index === currentStageIndex ? 'list-group-item-primary' : ''
+                  }`}
+                >
+                  <span>{stage.name}</span>
+                  <span className="badge bg-secondary">{stage.required}</span>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
       </div>

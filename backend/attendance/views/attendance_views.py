@@ -1,9 +1,5 @@
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from calendar import monthrange
-import calendar
 import json
 import threading
 from ..models import Employee, AttendanceRecord
@@ -14,8 +10,6 @@ from .push_notification import send_attendance_notification
 
 face_processor = FaceProcessor()
 
-def face_check(request):
-    return render(request, 'attendance/face_check.html')
 
 @csrf_exempt
 def process_attendance(request):
@@ -29,7 +23,6 @@ def process_attendance(request):
             return JsonResponse({'error': 'No image data'}, status=400)
 
         image = base64_to_image(image_data)
-        # Tạm tắt liveness check để debug (check_liveness=False)
         result = face_processor.verify_face(image, check_liveness=True)
         
         # Kiểm tra nếu phát hiện giả mạo (liveness check)
@@ -110,59 +103,11 @@ def process_attendance(request):
                 'check_in': record.check_in_time.isoformat() if record.check_in_time else None,
                 'check_out': record.check_out_time.isoformat() if record.check_out_time else None,
                 'status': record.get_status_display()
-            }
+            },
+            'time': now.strftime('%H:%M')
         })
 
     except Employee.DoesNotExist:
         return JsonResponse({'error': 'Không tìm thấy nhân viên trong hệ thống'}, status=404)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)
-
-@login_required
-def employee_detail(request, employee_id):
-    if not request.user.is_staff and request.user.employee.employee_id != employee_id:
-        from django.shortcuts import redirect
-        return redirect('attendance:dashboard')
-
-    employee = get_object_or_404(Employee, employee_id=employee_id)
-    now = get_vietnam_now()
-
-    _, last_day = monthrange(now.year, now.month)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    month_end = now.replace(day=last_day, hour=23, minute=59, second=59, microsecond=999999)
-
-    attendance_records = AttendanceRecord.objects.filter(
-        employee=employee,
-        date__range=[month_start.date(), month_end.date()]
-    ).order_by('-date')
-
-    stats = {
-        'on_time': attendance_records.filter(status='ON_TIME').count(),
-        'late': attendance_records.filter(status='LATE').count(),
-        'early': attendance_records.filter(status='EARLY').count(),
-    }
-
-    weekday_stats = {
-        'on_time': [0] * 7,
-        'late': [0] * 7,
-        'early': [0] * 7
-    }
-
-    for record in attendance_records:
-        weekday = record.date.weekday()
-        if record.status == 'ON_TIME':
-            weekday_stats['on_time'][weekday] += 1
-        elif record.status == 'LATE':
-            weekday_stats['late'][weekday] += 1
-        elif record.status == 'EARLY':
-            weekday_stats['early'][weekday] += 1
-
-    context = {
-        'employee': employee,
-        'attendance_records': attendance_records,
-        'stats': stats,
-        'weekday_stats': weekday_stats,
-        'current_month': now,
-    }
-
-    return render(request, 'attendance/employee_detail.html', context)

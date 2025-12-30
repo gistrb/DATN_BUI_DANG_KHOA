@@ -1,5 +1,2 @@
-// Common components
-export * from './common';
-
-// Layout components
+// Components barrel export
 export * from './layout';
