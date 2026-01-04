@@ -60,9 +60,6 @@ out/
 Thumbs.db
 Desktop.ini
 
-backend/config/settings.py
-frontend/src/config/config.js
-
 # Firebase Service Account (contains secrets)
 backend/config/datastoragedemo-99ff9-3abc57b4ec78.json
 backend/config/*-firebase*.json

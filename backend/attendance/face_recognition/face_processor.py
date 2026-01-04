@@ -5,92 +5,40 @@ from typing import Optional, List, Tuple, Union, Dict, Any
 import os
 from deepface import DeepFace
 
+_face_processor_instance = None
+
+def get_face_processor():
+    global _face_processor_instance
+    if _face_processor_instance is None:
+        _face_processor_instance = FaceProcessor()
+    return _face_processor_instance
+
 class FaceProcessor:
     def __init__(self):
-        # Sử dụng buffalo_s thay vì buffalo_l để tăng tốc độ (16MB vs 326MB)
-        # buffalo_s vẫn hỗ trợ pose detection với landmarks 2d106 & 3d68
-        # Sử dụng CPUExecutionProvider vì máy không có NVIDIA GPU
-        self.app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
+        self.app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
-        # Ngưỡng tối ưu cho ArcFace với Cosine Similarity (theo nghiên cứu: 97.86% accuracy)
-        self.similarity_threshold = 0.53
+        self.similarity_threshold = 0.7
         
         self.min_face_size = (64, 64)
         
         self.top_k = 3
         
-        # Sử dụng 100% Cosine Similarity (tối ưu cho ArcFace - angular margin loss)
         self.cosine_weight = 1.0
         self.l2_weight = 0.0
         
-        # Liveness detection threshold (0.0 - 1.0)
-        # Giá trị cao hơn = nghiêm ngặt hơn
         self.anti_spoof_threshold = 0.8
         
-        print("[FaceProcessor] Initialized with buffalo_s model and DeepFace anti-spoofing")
-
-    def adaptive_gamma_correction(self, image: np.ndarray) -> np.ndarray:
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        mean_brightness = np.mean(gray)
-        
-        if mean_brightness < 80:
-            gamma = 0.6  
-        elif mean_brightness > 180:
-            gamma = 1.5 
-        else:
-            gamma = 1.0  # Giữ nguyên
-        
-        if gamma != 1.0:
-            inv_gamma = 1.0 / gamma
-            table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in np.arange(256)]).astype("uint8")
-            return cv2.LUT(image, table)
-        return image
+        print("[FaceProcessor] Initialized with buffalo_l model and DeepFace anti-spoofing")
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
-        """Cải thiện chất lượng ảnh với adaptive gamma + CLAHE"""
-        try:
-            if image is None:
-                return None
-            
-            # Bước 1: Adaptive gamma correction
-            gamma_corrected = self.adaptive_gamma_correction(image)
-            
-            # Bước 2: CLAHE trong LAB color space
-            lab = cv2.cvtColor(gamma_corrected, cv2.COLOR_BGR2LAB)
-            l, a, b = cv2.split(lab)
-            
-            # Tăng clipLimit lên 3.0 để xử lý ánh sáng tốt hơn
-            clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
-            l_enhanced = clahe.apply(l)
-            
-            lab_enhanced = cv2.merge([l_enhanced, a, b])
-            enhanced = cv2.cvtColor(lab_enhanced, cv2.COLOR_LAB2BGR)
-            
-            # Bước 3: Giảm nhiễu nhẹ
-            enhanced = cv2.bilateralFilter(enhanced, 5, 50, 50)
-            
-            return enhanced
-            
-        except Exception as e:
-            return image
+        """
+        Cải thiện chất lượng ảnh
+        Hiện tại: Trả về ảnh gốc để đảm bảo độ chính xác của model buffalo_l
+        """
+        return image
 
     def check_liveness(self, image: np.ndarray) -> Dict[str, Any]:
-        """
-        Kiểm tra liveness của khuôn mặt sử dụng DeepFace Anti-Spoofing
-        
-        DeepFace sử dụng Silent Face Anti-Spoofing (MiniFASNet) models
-        để phát hiện: ảnh in, màn hình điện thoại, mask silicon, ảnh 3D
-        
-        Args:
-            image: Ảnh đầu vào (BGR format từ OpenCV)
-            
-        Returns:
-            Dict chứa:
-            - is_real: True nếu là khuôn mặt thật
-            - antispoof_score: Điểm liveness (0-1, cao = thật)
-            - message: Thông báo kết quả
-        """
         try:
             # DeepFace cần ảnh RGB
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -141,52 +89,24 @@ class FaceProcessor:
             }
 
 
-    def compute_top_k_similarity(self, query_embedding: np.ndarray, 
-                                  stored_embeddings: list, k: int = None) -> float:
-        """
-        Tính similarity sử dụng Top-K average
-        Giảm ảnh hưởng của outlier, tăng độ chính xác
-        
-        Args:
-            query_embedding: Embedding của ảnh cần kiểm tra
-            stored_embeddings: Danh sách embeddings đã lưu
-            k: Số lượng top similarities để tính trung bình
-            
-        Returns:
-            Similarity score trung bình của top-k
-        """
+    def compute_top_k_similarity(self, query_embedding: np.ndarray,stored_embeddings: list, k: int = None) -> float:
+
         if not stored_embeddings:
             return 0.0
         
-        k = k or self.top_k
+        # Debug: In thông tin embedding (đã disable)
+        # print(f"[compute_similarity] Query embedding shape: {query_embedding.shape}...")
         
         # Tính similarity với tất cả embeddings
         similarities = [self.compare_embeddings(query_embedding, emb) 
                        for emb in stored_embeddings]
         
-        # Lấy top-k cao nhất
-        k = min(k, len(similarities))
-        top_similarities = sorted(similarities, reverse=True)[:k]
-        
-        # Tính trung bình có trọng số (similarity cao có trọng số lớn hơn)
-        if len(top_similarities) == 1:
-            return top_similarities[0]
-        
-        # Weighted average: similarity càng cao, trọng số càng lớn
-        weights = [s ** 2 for s in top_similarities]  # Quadratic weighting
-        weighted_sum = sum(s * w for s, w in zip(top_similarities, weights))
-        weight_total = sum(weights)
-        
-        if weight_total == 0:
-            return 0.0
-        
-        return weighted_sum / weight_total
+        # Sử dụng MAX thay vì weighted average
+        # Vì khi đăng ký nhiều góc (front/left/right/up/down), 
+        # chỉ cần 1 góc match tốt là đủ để xác nhận
+        return max(similarities)
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        InsightFace tự động xử lý tiền xử lý (crop, align).
-        Hàm này giữ lại để tương thích và kiểm tra cơ bản.
-        """
         if image is None:
             return None
         if not isinstance(image, np.ndarray):
@@ -196,16 +116,7 @@ class FaceProcessor:
         return image
 
     def extract_embedding(self, image: np.ndarray, use_enhancement: bool = True) -> Optional[np.ndarray]:
-        """
-        Trích xuất embedding sử dụng ArcFace
-        
-        Args:
-            image: Ảnh đầu vào (BGR format)
-            use_enhancement: Có sử dụng image enhancement không (mặc định True)
-            
-        Returns:
-            Embedding vector đã chuẩn hóa hoặc None nếu không detect được face
-        """
+
         try:
             # Áp dụng image enhancement để tăng độ chính xác
             if use_enhancement:
@@ -242,7 +153,7 @@ class FaceProcessor:
             return None
 
     def cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
-        """Cosine Similarity: 1 = giống hoàn toàn, 0 = khác hoàn toàn"""
+
         try:
             emb1 = np.array(emb1).flatten()
             emb2 = np.array(emb2).flatten()
@@ -265,29 +176,11 @@ class FaceProcessor:
             return 2.0  # Max distance for normalized vectors
 
     def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-        """
-        So sánh embeddings sử dụng Cosine Similarity
-        Tối ưu cho ArcFace vì model được train với Angular Margin Loss
-        """
-        # Sử dụng Cosine Similarity (khuyến nghị cho ArcFace)
+
         return self.cosine_similarity(embedding1, embedding2)
 
     def check_image_quality(self, image: np.ndarray, face_bbox: List[float]) -> Dict[str, Any]:
-        """
-        Kiểm tra chất lượng ảnh và khuôn mặt
-        
-        Args:
-            image: Ảnh đầu vào (BGR format)
-            face_bbox: Bounding box của khuôn mặt [x1, y1, x2, y2]
-            
-        Returns:
-            Dict chứa thông tin chất lượng:
-            - is_valid: True nếu ảnh đạt tiêu chuẩn
-            - brightness: Độ sáng trung bình
-            - face_area: Diện tích khuôn mặt
-            - blur_score: Điểm độ nét
-            - message: Thông báo chi tiết
-        """
+
         try:
             # Chuyển sang grayscale để tính toán
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -354,20 +247,7 @@ class FaceProcessor:
             }
 
     def detect_pose(self, image: np.ndarray) -> Optional[Dict[str, Any]]:
-        """
-        Phát hiện tư thế khuôn mặt sử dụng InsightFace
-        
-        Args:
-            image: Ảnh đầu vào (BGR format)
-            
-        Returns:
-            Dict chứa:
-            - yaw: Góc xoay trái/phải (degrees)
-            - pitch: Góc ngẩng/cúi (degrees)
-            - roll: Góc nghiêng (degrees)
-            - pose_type: 'front', 'left', 'right', 'up', 'down'
-            - bbox: Bounding box của khuôn mặt
-        """
+
         try:
             faces = self.app.get(image)
             if not faces:
@@ -436,20 +316,7 @@ class FaceProcessor:
             return None
     
     def _classify_pose(self, yaw: float, pitch: float) -> str:
-        """
-        Phân loại tư thế dựa trên góc yaw và pitch
-        
-        Args:
-            yaw: Góc xoay trái/phải (-180 đến +180)
-            pitch: Góc ngẩng/cúi (-180 đến +180)
-            
-        Returns:
-            'front', 'left', 'right', 'up', 'down'
-        """
-        # Tăng ngưỡng lên 20° để dễ phân biệt hơn
-        # Ưu tiên YAW (trái/phải) TRƯỚC, sau đó mới đến pitch (lên/xuống)
-        
-        # Kiểm tra yaw (trái/phải) trước
+
         if abs(yaw) > 20:  # Nếu xoay trái/phải rõ ràng
             if yaw < -20:
                 return 'left'    # Xoay trái
@@ -467,7 +334,6 @@ class FaceProcessor:
         return 'front'
 
     def _validate_image(self, image: np.ndarray) -> bool:
-        """Kiểm tra ảnh đầu vào hợp lệ"""
         if image is None:
             return False
         if not isinstance(image, np.ndarray):
@@ -494,25 +360,7 @@ class FaceProcessor:
         return True
 
     def verify_face(self, image: np.ndarray, stored_embeddings: List[np.ndarray] = None, check_liveness: bool = True) -> Optional[Dict[str, Any]]:
-        """
-        Xác thực khuôn mặt và trả về thông tin nhân viên nếu khớp
         
-        Cải tiến (v3.0):
-        - Sử dụng image enhancement trước khi nhận diện
-        - Top-K weighted average matching thay vì max
-        - Trả về confidence level
-        - Liveness detection để chống giả mạo (ảnh, video, mask)
-        
-        Args:
-            image: Ảnh đầu vào hoặc embedding
-            stored_embeddings: Danh sách embeddings đã lưu (optional)
-            check_liveness: Có kiểm tra liveness không (mặc định True)
-            
-        Returns:
-            Dict chứa thông tin nhân viên nếu xác thực thành công
-            Dict chứa error nếu phát hiện giả mạo
-            None nếu không tìm thấy khuôn mặt khớp
-        """
         query_embedding = None
         bbox = None
 
@@ -573,6 +421,8 @@ class FaceProcessor:
         if stored_embeddings is None:
             from attendance.models import Employee
             employees = Employee.objects.filter(face_embeddings__isnull=False)
+            
+            print(f"[verify_face] Tìm thấy {employees.count()} nhân viên có face embeddings")
 
             max_similarity = -1
             matched_employee = None
@@ -580,15 +430,19 @@ class FaceProcessor:
             for employee in employees:
                 embs = employee.get_face_embeddings()
                 if not embs:
+                    print(f"[verify_face] {employee.employee_id}: Không có embeddings hợp lệ")
                     continue
 
                 # Sử dụng Top-K weighted average thay vì max
                 employee_similarity = self.compute_top_k_similarity(query_embedding, embs)
+                print(f"[verify_face] {employee.employee_id} ({employee.user.get_full_name()}): similarity = {employee_similarity:.4f}, embeddings count = {len(embs)}")
                 
                 if employee_similarity > max_similarity:
                     max_similarity = employee_similarity
                     matched_employee = employee
 
+            print(f"[verify_face] Best match: {matched_employee.employee_id if matched_employee else 'None'}, max_similarity = {max_similarity:.4f}")
+            
             if max_similarity >= self.similarity_threshold and matched_employee:
                 result = {
                     'employee_id': matched_employee.employee_id,

@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from ..models import Employee
-from ..face_recognition.face_processor import FaceProcessor
+from ..face_recognition.face_processor import get_face_processor
 from .utils import get_vietnam_now
 import json
 import base64
@@ -10,7 +10,7 @@ import cv2
 import io
 from PIL import Image
 
-face_processor = FaceProcessor()
+face_processor = get_face_processor()
 
 def base64_to_image(base64_string):
     if ',' in base64_string:
@@ -129,6 +129,19 @@ def register_face(request):
                 embedding = face_processor.get_face_embedding(image)
                 
                 if embedding is not None:
+                    # Kiểm tra chất lượng ảnh
+                    # Lấy bbox để tính diện tích khuôn mặt
+                    faces = face_processor.app.get(image)
+                    if faces:
+                        bbox = faces[0].bbox
+                        quality_check = face_processor.check_image_quality(image, bbox)
+                        
+                        if not quality_check['is_valid']:
+                            return JsonResponse({
+                                'error': 'Chất lượng ảnh không đạt yêu cầu',
+                                'details': f"Ảnh thứ {len(embeddings)+1}: {quality_check['message']}"
+                            }, status=400)
+
                     if not checked_duplicate:
                         existing_face = face_processor.verify_face(embedding, check_liveness=False)
                         if existing_face and existing_face['employee_id'] != employee.employee_id:
@@ -144,6 +157,7 @@ def register_face(request):
                     'error': f'Không đủ mẫu khuôn mặt hợp lệ. Chỉ nhận được {len(embeddings)}/20 mẫu'
                 }, status=400)
 
+            # Lưu embedding
             employee.set_face_embeddings(embeddings)
             employee.save()
 
