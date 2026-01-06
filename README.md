@@ -184,26 +184,6 @@ npx expo start
 
 ---
 
-## ⚙️ Cấu Hình
-
-### Django Settings
-
-| Setting                  | Giá trị            | Mô tả                                       |
-| ------------------------ | ------------------ | ------------------------------------------- |
-| `ALLOWED_HOSTS`          | `['*']`            | Cho phép truy cập từ mọi host (development) |
-| `CORS_ALLOW_ALL_ORIGINS` | `True`             | Cho phép CORS từ mọi origin                 |
-| `TIME_ZONE`              | `Asia/Ho_Chi_Minh` | Múi giờ Việt Nam                            |
-| `USE_TZ`                 | `True`             | Lưu UTC trong database                      |
-
-### Database
-
-PostgreSQL với cấu hình trong file `.env`:
-
-- `DB_NAME`: Tên database
-- `DB_USER`: Username
-- `DB_PASSWORD`: Password
-- `DB_HOST`: Host (localhost)
-- `DB_PORT`: Port (5432)
 
 ---
 
