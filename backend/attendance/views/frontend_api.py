@@ -181,11 +181,20 @@ def employee_detail_api(request, employee_id):
         ).order_by('-date')[:30]
         
         history = []
+        vietnam_tz = get_vietnam_now().tzinfo  # Get Vietnam timezone
         for record in records:
+            # Convert UTC times to Vietnam timezone
+            check_in_vn = None
+            check_out_vn = None
+            if record.check_in_time:
+                check_in_vn = record.check_in_time.astimezone(vietnam_tz).strftime('%H:%M')
+            if record.check_out_time:
+                check_out_vn = record.check_out_time.astimezone(vietnam_tz).strftime('%H:%M')
+            
             history.append({
                 'date': record.date.isoformat(),
-                'check_in': record.check_in_time.strftime('%H:%M') if record.check_in_time else None,
-                'check_out': record.check_out_time.strftime('%H:%M') if record.check_out_time else None,
+                'check_in': check_in_vn,
+                'check_out': check_out_vn,
                 'status': record.status,
                 'status_display': record.get_status_display(),
             })

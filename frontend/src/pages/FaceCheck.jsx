@@ -1,12 +1,13 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
-import { FaceDetector, FilesetResolver } from '@mediapipe/tasks-vision';
+import { FaceDetector, FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { processAttendance } from '../services/api';
 
 const FaceCheck = () => {
   const webcamRef = useRef(null);
   const faceDetectorRef = useRef(null);
+  const faceLandmarkerRef = useRef(null);
   const animationRef = useRef(null);
   
   const [result, setResult] = useState(null);
@@ -21,13 +22,58 @@ const FaceCheck = () => {
   const isProcessingRef = useRef(false);
   const [cooldown, setCooldown] = useState(0);
 
+  // Blink detection states
+  const [blinkPhase, setBlinkPhase] = useState('waiting'); // 'waiting' | 'detecting' | 'confirmed'
+  const [blinkCountdown, setBlinkCountdown] = useState(0);
+  const prevEarRef = useRef(null);
+  const [blinkDetected, setBlinkDetected] = useState(false);
+  const eyeClosedRef = useRef(false);
+
+  // Eye Aspect Ratio threshold - lower = more sensitive
+  const EAR_THRESHOLD = 0.25;
+  const EAR_OPEN_THRESHOLD = 0.28;
+
+  // MediaPipe Face Landmarker - correct eye landmark indices
+  // Left eye: upper eyelid (159, 145), lower eyelid (153, 144), corners (33, 133)
+  // Right eye: upper eyelid (386, 374), lower eyelid (380, 373), corners (362, 263)
+  // Using vertical points for EAR calculation
+  const LEFT_EYE_TOP = [159, 158, 157];
+  const LEFT_EYE_BOTTOM = [145, 153, 144];
+  const LEFT_EYE_LEFT = 33;
+  const LEFT_EYE_RIGHT = 133;
+  
+  const RIGHT_EYE_TOP = [386, 385, 384];
+  const RIGHT_EYE_BOTTOM = [374, 380, 373];
+  const RIGHT_EYE_LEFT = 362;
+  const RIGHT_EYE_RIGHT = 263;
+
+  const calculateEAR = useCallback((landmarks, eyeTop, eyeBottom, eyeLeft, eyeRight) => {
+    // EAR = (vertical distances) / (horizontal distance)
+    // Using average of multiple vertical points for stability
+    const dist = (a, b) => Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+
+    // Calculate average vertical distance
+    let verticalSum = 0;
+    for (let i = 0; i < eyeTop.length; i++) {
+      verticalSum += dist(landmarks[eyeTop[i]], landmarks[eyeBottom[i]]);
+    }
+    const avgVertical = verticalSum / eyeTop.length;
+    
+    // Horizontal distance
+    const horizontal = dist(landmarks[eyeLeft], landmarks[eyeRight]);
+
+    if (horizontal === 0) return 0;
+    return avgVertical / horizontal;
+  }, []);
+
   useEffect(() => {
-    const initFaceDetector = async () => {
+    const initModels = async () => {
       try {
         const vision = await FilesetResolver.forVisionTasks(
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
         );
 
+        // Initialize Face Detector
         const detector = await FaceDetector.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
@@ -36,16 +82,27 @@ const FaceCheck = () => {
           runningMode: "VIDEO"
         });
 
+        // Initialize Face Landmarker for blink detection
+        const landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "CPU"
+          },
+          runningMode: "VIDEO",
+          numFaces: 1
+        });
+
         faceDetectorRef.current = detector;
+        faceLandmarkerRef.current = landmarker;
         setModelLoaded(true);
         setStatus('Đưa khuôn mặt vào khung');
       } catch (error) {
-        console.error('Failed to load face detector:', error);
+        console.error('Failed to load models:', error);
         setStatus('Lỗi tải model. Vui lòng refresh trang.');
       }
     };
 
-    initFaceDetector();
+    initModels();
 
     return () => {
       if (animationRef.current) {
@@ -108,6 +165,44 @@ const FaceCheck = () => {
 
   const [faceInOval, setFaceInOval] = useState(false);
 
+  // Blink detection function
+  const detectBlink = useCallback((video) => {
+    if (!faceLandmarkerRef.current) return;
+
+    try {
+      const result = faceLandmarkerRef.current.detectForVideo(video, performance.now());
+      
+      if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+        const landmarks = result.faceLandmarks[0];
+        
+        // Calculate EAR for both eyes using new indices
+        const leftEAR = calculateEAR(landmarks, LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_LEFT, LEFT_EYE_RIGHT);
+        const rightEAR = calculateEAR(landmarks, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT);
+        const avgEAR = (leftEAR + rightEAR) / 2;
+
+        // Debug logs
+        console.log(`EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current} | Threshold: ${EAR_THRESHOLD}`);
+
+        // Detect blink: eye closed (EAR < threshold) then opened (EAR > threshold)
+        if (avgEAR < EAR_THRESHOLD) {
+          if (!eyeClosedRef.current) {
+            console.log('👁️ Eye CLOSED detected!');
+          }
+          eyeClosedRef.current = true;
+        } else if (eyeClosedRef.current && avgEAR > EAR_OPEN_THRESHOLD) {
+          // Eye was closed and now opened - blink detected
+          console.log('✅ BLINK DETECTED!');
+          setBlinkDetected(true);  // Use state to trigger re-render
+          eyeClosedRef.current = false;
+        }
+
+        prevEarRef.current = avgEAR;
+      }
+    } catch (error) {
+      console.error('Blink detection error:', error);
+    }
+  }, [calculateEAR]);
+
   useEffect(() => {
     if (!modelLoaded) return;
 
@@ -142,18 +237,32 @@ const FaceCheck = () => {
                   const inOval = isFaceInOval(bbox, videoWidth, videoHeight);
                   setFaceInOval(inOval);
                   
+                  // Detect blink when in detecting phase
+                  if (blinkPhase === 'detecting') {
+                    detectBlink(video);
+                  }
+                  
                   if (!inOval) {
                     setCountdown(0);
+                    setBlinkPhase('waiting');
+                    blinkDetectedRef.current = false;
+                    eyeClosedRef.current = false;
                   }
                 } else {
                   setFaceDetected(false);
                   setFaceInOval(false);
                   setCountdown(0);
+                  setBlinkPhase('waiting');
+                  blinkDetectedRef.current = false;
+                  eyeClosedRef.current = false;
                 }
               } else {
                 setFaceDetected(false);
                 setFaceInOval(false);
                 setCountdown(0);
+                setBlinkPhase('waiting');
+                blinkDetectedRef.current = false;
+                eyeClosedRef.current = false;
               }
             } catch (error) {
               // Silent fail
@@ -161,7 +270,7 @@ const FaceCheck = () => {
           }
         }
       }
-      timeoutId = setTimeout(detectFace, 200);
+      timeoutId = setTimeout(detectFace, 100); // Faster detection for blink
     };
 
     detectFace();
@@ -171,7 +280,7 @@ const FaceCheck = () => {
         clearTimeout(timeoutId);
       }
     };
-  }, [modelLoaded, isFaceInOval]);
+  }, [modelLoaded, isFaceInOval, blinkPhase, detectBlink]);
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -190,20 +299,56 @@ const FaceCheck = () => {
     }
   }, [cooldown]);
 
+  // Main countdown and blink detection logic
   useEffect(() => {
     if (result || cooldown > 0) return;
 
-    if (faceDetected && faceInOval && !loading && countdown < 2) {
-      setStatus(`Giữ yên... (${(2 - countdown).toFixed(1)}s)`);
-      countdownRef.current = setTimeout(() => {
-        setCountdown(prev => prev + 0.1);
-      }, 100);
-    } else if (faceDetected && faceInOval && countdown >= 2 && !loading) {
-      handleAutoCapture();
-    } else if (faceDetected && !faceInOval && !loading) {
-      setStatus('Di chuyển khuôn mặt vào khung oval');
-    } else if (!faceDetected && !loading) {
-      setStatus('Đưa khuôn mặt vào khung');
+    if (blinkPhase === 'waiting') {
+      // Phase 1: Wait for face in oval for 2 seconds
+      if (faceDetected && faceInOval && !loading && countdown < 2) {
+        setStatus(`Giữ yên... (${(2 - countdown).toFixed(1)}s)`);
+        countdownRef.current = setTimeout(() => {
+          setCountdown(prev => prev + 0.1);
+        }, 100);
+      } else if (faceDetected && faceInOval && countdown >= 2 && !loading) {
+        // Move to blink detection phase
+        setBlinkPhase('detecting');
+        setStatus('👁️ Hãy chớp mắt!');
+        setBlinkDetected(false);
+        eyeClosedRef.current = false;
+      } else if (faceDetected && !faceInOval && !loading) {
+        setStatus('Di chuyển khuôn mặt vào khung oval');
+      } else if (!faceDetected && !loading) {
+        setStatus('Đưa khuôn mặt vào khung');
+      }
+    } else if (blinkPhase === 'detecting') {
+      // Phase 2: Wait for blink
+      if (!faceDetected || !faceInOval) {
+        // Face moved out - reset
+        setBlinkPhase('waiting');
+        setCountdown(0);
+        setBlinkDetected(false);
+        eyeClosedRef.current = false;
+        return;
+      }
+
+      if (blinkDetected) {
+        // Blink detected - move to confirmed phase
+        setBlinkPhase('confirmed');
+        setBlinkCountdown(1);
+        setStatus('✅ Đã nhận diện! Đang xử lý...');
+      }
+    } else if (blinkPhase === 'confirmed') {
+      // Phase 3: 1 second delay then capture
+      if (blinkCountdown > 0) {
+        const timer = setTimeout(() => {
+          setBlinkCountdown(prev => prev - 0.1);
+        }, 100);
+        return () => clearTimeout(timer);
+      } else {
+        // Capture!
+        handleAutoCapture();
+      }
     }
 
     return () => {
@@ -211,14 +356,14 @@ const FaceCheck = () => {
         clearTimeout(countdownRef.current);
       }
     };
-  }, [faceDetected, faceInOval, countdown, loading, cooldown, result]);
+  }, [faceDetected, faceInOval, countdown, loading, cooldown, result, blinkPhase, blinkCountdown, blinkDetected]);
 
   const handleAutoCapture = async () => {
     if (isProcessingRef.current || loading) return;
     
     isProcessingRef.current = true;
     setLoading(true);
-    setStatus('Đang xử lý...');
+    setStatus('Đang xử lý chấm công...');
     
     try {
       const imageSrc = webcamRef.current.getScreenshot();
@@ -246,6 +391,10 @@ const FaceCheck = () => {
       setLoading(false);
       isProcessingRef.current = false;
       setCountdown(0);
+      setBlinkPhase('waiting');
+      setBlinkCountdown(0);
+      setBlinkDetected(false);
+      eyeClosedRef.current = false;
       setFaceDetected(false);
       setStatus('');
       
@@ -270,6 +419,8 @@ const FaceCheck = () => {
   const progressPercent = (countdown / 2) * 100;
 
   const getOvalStroke = () => {
+    if (blinkPhase === 'detecting') return "#17a2b8"; // Cyan for blink phase
+    if (blinkPhase === 'confirmed') return "#28a745"; // Green for confirmed
     if (faceInOval) return "#198754";
     if (faceDetected) return "#ffc107";
     return "rgba(255,255,255,0.6)";
@@ -277,6 +428,8 @@ const FaceCheck = () => {
 
   const getStatusBg = () => {
     if (loading) return 'bg-primary';
+    if (blinkPhase === 'detecting') return 'bg-info';
+    if (blinkPhase === 'confirmed') return 'bg-success';
     if (faceInOval) return 'bg-success';
     if (faceDetected) return 'bg-warning';
     return 'bg-secondary bg-opacity-50';
@@ -322,16 +475,20 @@ const FaceCheck = () => {
             stroke={getOvalStroke()}
             strokeWidth={faceDetected ? "4" : "3"}
             style={{
-              filter: faceInOval 
-                ? "drop-shadow(0 0 15px #198754)" 
-                : faceDetected 
-                  ? "drop-shadow(0 0 10px #ffc107)" 
-                  : "none",
+              filter: blinkPhase === 'detecting' 
+                ? "drop-shadow(0 0 15px #17a2b8)"
+                : blinkPhase === 'confirmed'
+                  ? "drop-shadow(0 0 15px #28a745)"
+                  : faceInOval 
+                    ? "drop-shadow(0 0 15px #198754)" 
+                    : faceDetected 
+                      ? "drop-shadow(0 0 10px #ffc107)" 
+                      : "none",
               transition: "all 0.2s ease"
             }}
           />
           
-          {faceInOval && countdown > 0 && (
+          {faceInOval && countdown > 0 && blinkPhase === 'waiting' && (
             <ellipse 
               cx="50%" 
               cy="45%" 
@@ -348,7 +505,32 @@ const FaceCheck = () => {
               }}
             />
           )}
+
+          {/* Blink phase indicator - pulsing ring */}
+          {blinkPhase === 'detecting' && (
+            <ellipse 
+              cx="50%" 
+              cy="45%" 
+              rx="210" 
+              ry="280" 
+              fill="none" 
+              stroke="#17a2b8"
+              strokeWidth="4"
+              style={{
+                animation: "pulse 1s infinite",
+                filter: "drop-shadow(0 0 10px #17a2b8)"
+              }}
+            />
+          )}
         </svg>
+        
+        {/* Add CSS animation */}
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+        `}</style>
       </div>
 
       {/* Header */}
@@ -380,9 +562,15 @@ const FaceCheck = () => {
           </div>
         )}
         
-        {modelLoaded && !faceDetected && !loading && (
+        {modelLoaded && !faceDetected && !loading && blinkPhase === 'waiting' && (
           <p className="text-white-50 small mt-3">
-            Đặt khuôn mặt vào khung và giữ yên trong 2 giây
+            Đặt khuôn mặt vào khung, giữ yên 2 giây, sau đó chớp mắt
+          </p>
+        )}
+
+        {blinkPhase === 'detecting' && (
+          <p className="text-white small mt-3" style={{ animation: 'pulse 1s infinite' }}>
+            Nhìn vào camera và chớp mắt một lần
           </p>
         )}
       </div>

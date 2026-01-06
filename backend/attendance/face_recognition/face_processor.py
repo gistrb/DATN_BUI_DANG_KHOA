@@ -3,7 +3,6 @@ import numpy as np
 from insightface.app import FaceAnalysis
 from typing import Optional, List, Tuple, Union, Dict, Any
 import os
-from deepface import DeepFace
 
 _face_processor_instance = None
 
@@ -18,7 +17,7 @@ class FaceProcessor:
         self.app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
-        self.similarity_threshold = 0.7
+        self.similarity_threshold = 0.75
         
         self.min_face_size = (64, 64)
         
@@ -27,9 +26,7 @@ class FaceProcessor:
         self.cosine_weight = 1.0
         self.l2_weight = 0.0
         
-        self.anti_spoof_threshold = 0.8
-        
-        print("[FaceProcessor] Initialized with buffalo_l model and DeepFace anti-spoofing")
+        print("[FaceProcessor] Initialized with buffalo_l model")
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
         """
@@ -38,55 +35,6 @@ class FaceProcessor:
         """
         return image
 
-    def check_liveness(self, image: np.ndarray) -> Dict[str, Any]:
-        try:
-            # DeepFace cần ảnh RGB
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            # Sử dụng DeepFace extract_faces với anti_spoofing=True
-            # Điều này sẽ tự động download model lần đầu (~1MB)
-            face_objs = DeepFace.extract_faces(
-                img_path=image_rgb,
-                detector_backend='skip',  # Bỏ qua detection vì đã có face
-                anti_spoofing=True,
-                enforce_detection=False
-            )
-            
-            if not face_objs:
-                return {
-                    'is_real': False,
-                    'antispoof_score': 0.0,
-                    'message': 'Không phát hiện khuôn mặt'
-                }
-            
-            # Lấy kết quả anti-spoofing từ face đầu tiên
-            face_obj = face_objs[0]
-            is_real = face_obj.get('is_real', False)
-            antispoof_score = face_obj.get('antispoof_score', 0.0)
-            
-            # Kiểm tra với threshold
-            if antispoof_score < self.anti_spoof_threshold:
-                is_real = False
-            
-            if is_real:
-                message = f'Khuôn mặt thật (score: {antispoof_score:.2f})'
-            else:
-                message = f'Phát hiện giả mạo! (score: {antispoof_score:.2f})'
-            
-            return {
-                'is_real': is_real,
-                'antispoof_score': float(antispoof_score),
-                'message': message
-            }
-            
-        except Exception as e:
-            print(f"[check_liveness] Lỗi: {e}")
-            # Nếu lỗi, cho phép đi tiếp nhưng log warning
-            return {
-                'is_real': True,  # Fail-open để không block user
-                'antispoof_score': 1.0,
-                'message': f'Lỗi kiểm tra liveness: {str(e)}'
-            }
 
 
     def compute_top_k_similarity(self, query_embedding: np.ndarray,stored_embeddings: list, k: int = None) -> float:
@@ -359,7 +307,7 @@ class FaceProcessor:
         print(f"[register_face] Đăng ký thành công cho nhân viên {employee_id}")
         return True
 
-    def verify_face(self, image: np.ndarray, stored_embeddings: List[np.ndarray] = None, check_liveness: bool = True) -> Optional[Dict[str, Any]]:
+    def verify_face(self, image: np.ndarray, stored_embeddings: List[np.ndarray] = None) -> Optional[Dict[str, Any]]:
         
         query_embedding = None
         bbox = None
@@ -403,18 +351,7 @@ class FaceProcessor:
         if query_embedding is None:
             return None
 
-        # Kiểm tra liveness nếu được bật và đầu vào là ảnh
-        if check_liveness and isinstance(image, np.ndarray) and image.ndim == 3:
-            liveness_result = self.check_liveness(image)
-            if not liveness_result['is_real']:
-                print(f"[verify_face] Phát hiện giả mạo: {liveness_result['message']}")
-                return {
-                    'error': 'spoof_detected',
-                    'message': 'Phát hiện khuôn mặt giả mạo. Vui lòng sử dụng khuôn mặt thật.',
-                    'liveness_score': liveness_result['antispoof_score'],
-                    'liveness_message': liveness_result['message']
-                }
-            print(f"[verify_face] Liveness OK: {liveness_result['message']}")
+
 
         result = None
 

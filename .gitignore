@@ -64,3 +64,4 @@ Desktop.ini
 backend/config/datastoragedemo-99ff9-3abc57b4ec78.json
 backend/config/*-firebase*.json
 backend/config/firebase-*.json
+*.agent

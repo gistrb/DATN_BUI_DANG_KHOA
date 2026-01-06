@@ -66,12 +66,14 @@ def check_duplicate(request):
                 return JsonResponse({'success': False, 'error': 'No image provided'}, status=400)
             
             image = base64_to_image(image_data)
+            
+            # --- Duplicate Check ---
             embedding = face_processor.get_face_embedding(image)
             
             if embedding is None:
                 return JsonResponse({'success': False, 'error': 'No face detected'}, status=400)
             
-            existing_face = face_processor.verify_face(embedding, check_liveness=False)
+            existing_face = face_processor.verify_face(embedding)
             
             if existing_face:
                 return JsonResponse({
@@ -143,7 +145,7 @@ def register_face(request):
                             }, status=400)
 
                     if not checked_duplicate:
-                        existing_face = face_processor.verify_face(embedding, check_liveness=False)
+                        existing_face = face_processor.verify_face(embedding)
                         if existing_face and existing_face['employee_id'] != employee.employee_id:
                             return JsonResponse({
                                 'error': f"Khuôn mặt này đã tồn tại trong hệ thống",
@@ -152,9 +154,9 @@ def register_face(request):
                         checked_duplicate = True
                     embeddings.append(embedding)
 
-            if len(embeddings) < 10:
+            if len(embeddings) < 5:
                 return JsonResponse({
-                    'error': f'Không đủ mẫu khuôn mặt hợp lệ. Chỉ nhận được {len(embeddings)}/20 mẫu'
+                    'error': f'Không đủ mẫu khuôn mặt hợp lệ. Chỉ nhận được {len(embeddings)}/5 mẫu'
                 }, status=400)
 
             # Lưu embedding

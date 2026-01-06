@@ -22,12 +22,14 @@ const RegisterFace = () => {
   const { isAdmin } = useAuth();
 
   const POSE_STAGES = [
-    { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 5, color: '#0d6efd' },
-    { pose: 'left', name: '↪️ Xoay mặt nhẹ', required: 5, color: '#198754' },
-    { pose: 'right', name: '↩️ Xoay mặt nhẹ', required: 5, color: '#198754' },
-    { pose: 'up', name: '⬆️ Ngẩng đầu lên nhẹ', required: 3, color: '#fd7e14' },
-    { pose: 'down', name: '⬇️ Cúi đầu xuống nhẹ', required: 2, color: '#fd7e14' }
+    { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 1, color: '#0d6efd' },
+    { pose: 'left', name: '↪️ Xoay mặt sang trái', required: 1, color: '#198754' },
+    { pose: 'right', name: '↩️ Xoay mặt sang phải', required: 1, color: '#198754' },
+    { pose: 'up', name: '⬆️ Ngẩng đầu lên', required: 1, color: '#fd7e14' },
+    { pose: 'down', name: '⬇️ Cúi đầu xuống', required: 1, color: '#fd7e14' }
   ];
+
+  const TOTAL_REQUIRED = 5; // 5 ảnh chất lượng cao
 
   useEffect(() => {
     if (!isAdmin()) {
@@ -135,6 +137,13 @@ const RegisterFace = () => {
                     setPoseFeedback('✅ Không trùng - tiếp tục!');
                   } catch (error) {
                     console.error('Error checking duplicate:', error);
+                    stateRef.current.isRunning = false;
+                    setIsCapturing(false);
+                    setMessage({
+                      type: 'danger',
+                      text: error.response?.data?.message || error.response?.data?.error || 'Lỗi kiểm tra hợp lệ'
+                    });
+                    return;
                   }
                 }
 
@@ -244,7 +253,9 @@ const RegisterFace = () => {
                     objectFit: 'contain'
                   }}
                   videoConstraints={{
-                    facingMode: "user"
+                    facingMode: "user",
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
                   }}
                 />
                 <canvas ref={canvasRef} className="position-absolute top-0 start-0" />
@@ -286,15 +297,15 @@ const RegisterFace = () => {
               <div className="mb-4">
                 <div className="d-flex justify-content-between mb-1">
                   <small>Tổng tiến độ</small>
-                  <small>{allCaptures.length}/20 ảnh</small>
+                  <small>{allCaptures.length}/{TOTAL_REQUIRED} ảnh</small>
                 </div>
                 <div className="progress" style={{ height: '25px' }}>
                   <div
                     className="progress-bar bg-success"
                     role="progressbar"
-                    style={{ width: `${(allCaptures.length / 20) * 100}%` }}
+                    style={{ width: `${(allCaptures.length / TOTAL_REQUIRED) * 100}%` }}
                   >
-                    {allCaptures.length}/20
+                    {allCaptures.length}/{TOTAL_REQUIRED}
                   </div>
                 </div>
               </div>
@@ -349,10 +360,11 @@ const RegisterFace = () => {
                 <li className="mb-2">Nhấn "Bắt đầu thu thập"</li>
                 <li className="mb-2">Làm theo hướng dẫn tư thế:
                   <ul className="mt-1">
-                    <li>Nhìn thẳng (5 ảnh)</li>
-                    <li>Xoay trái/phải (mỗi bên 5 ảnh)</li>
-                    <li>Ngẩng lên (3 ảnh)</li>
-                    <li>Cúi xuống (2 ảnh)</li>
+                    <li>Nhìn thẳng (1 ảnh)</li>
+                    <li>Xoay trái (1 ảnh)</li>
+                    <li>Xoay phải (1 ảnh)</li>
+                    <li>Ngẩng lên (1 ảnh)</li>
+                    <li>Cúi xuống (1 ảnh)</li>
                   </ul>
                 </li>
                 <li className="mb-2">Hệ thống tự động lưu khi đủ ảnh</li>
