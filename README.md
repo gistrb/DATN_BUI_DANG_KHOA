@@ -12,8 +12,6 @@
   - [Web - Admin](#web---admin)
   - [Web - Nhân viên](#web---nhân-viên)
   - [Mobile App](#mobile-app)
-- [Cấu Hình](#cấu-hình)
-
 ---
 
 ## 🛠 Công Nghệ
