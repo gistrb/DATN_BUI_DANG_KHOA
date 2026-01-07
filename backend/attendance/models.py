@@ -47,8 +47,11 @@ class Employee(models.Model):
         ('NOT_IN', 'Chưa check-in')
     ]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+    user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, blank=True)
     employee_id = models.CharField(max_length=20, unique=True, verbose_name="Mã nhân viên")
+    first_name = models.CharField(max_length=50, verbose_name="Tên", default='')
+    last_name = models.CharField(max_length=50, verbose_name="Họ", default='')
+    email = models.EmailField(blank=True, null=True, verbose_name="Email")
     gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='O', verbose_name="Giới tính")
     date_of_birth = models.DateField(null=True, blank=True, verbose_name="Ngày sinh")
     phone_number = models.CharField(max_length=15, null=True, blank=True, verbose_name="Số điện thoại")
@@ -129,8 +132,12 @@ class Employee(models.Model):
         verbose_name_plural = "Nhân viên"
         ordering = ['employee_id']
 
+    def get_full_name(self):
+        """Trả về họ tên đầy đủ của nhân viên"""
+        return f"{self.last_name} {self.first_name}".strip() or self.employee_id
+
     def __str__(self):
-        return f"{self.user.get_full_name()} ({self.employee_id})"
+        return f"{self.get_full_name()} ({self.employee_id})"
 
 class AttendanceRecord(models.Model):
     STATUS_CHOICES = [

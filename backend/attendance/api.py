@@ -165,11 +165,10 @@ def attendance_history_api(request, employee_id):
         return JsonResponse({'success': False, 'message': 'Employee not found'}, status=404)
 
 def employees_without_face_api(request):
-    """API to get employees without face embeddings"""
+    """API to get all active employees with face registration status"""
     try:
         employees = Employee.objects.filter(
-            is_active=True,
-            face_embeddings__isnull=True
+            is_active=True
         ).select_related('user').order_by('user__first_name', 'user__last_name')
         
         employee_list = []
@@ -179,6 +178,7 @@ def employees_without_face_api(request):
                 'full_name': emp.user.get_full_name(),
                 'department': emp.department,
                 'position': emp.position,
+                'has_face': bool(emp.face_embeddings)
             })
         
         return JsonResponse({

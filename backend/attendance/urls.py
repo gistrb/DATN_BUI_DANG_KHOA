@@ -9,6 +9,7 @@ urlpatterns = [
     path('check-pose/', views.check_pose, name='check_pose'),
     path('check-duplicate/', views.check_duplicate, name='check_duplicate'),
     path('register-face/', views.register_face, name='register_face'),
+    path('delete-face/', views.delete_face, name='delete_face'),
     
     # Mobile App APIs
     path('api/login/', api.login_api, name='api_login'),

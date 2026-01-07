@@ -9,7 +9,7 @@ from django.shortcuts import redirect
 class EmployeeInline(admin.StackedInline):
     model = Employee
     can_delete = False
-    readonly_fields = ('current_status',)  # Không cho phép sửa trạng thái hiện tại
+    readonly_fields = ('current_status', 'face_registration_status')  # Không cho phép sửa trạng thái hiện tại
     fieldsets = (
         ('Thông tin cá nhân', {
             'fields': ('employee_id', 'gender', 'date_of_birth', 'phone_number', 'address')
@@ -18,10 +18,17 @@ class EmployeeInline(admin.StackedInline):
             'fields': ('department', 'position', 'join_date', 'work_status')
         }),
         ('Trạng thái', {
-            'fields': ('current_status', 'is_active'),
+            'fields': ('current_status', 'is_active', 'face_registration_status'),
             'classes': ('collapse',)
         }),
     )
+
+    def face_registration_status(self, obj):
+        """Hiển thị trạng thái đăng ký khuôn mặt"""
+        if obj and obj.face_embeddings:
+            return format_html('<span style="color: green; font-weight: bold;">✓ Đã đăng ký khuôn mặt</span>')
+        return format_html('<span style="color: red;">✗ Chưa đăng ký khuôn mặt</span>')
+    face_registration_status.short_description = "Đăng ký khuôn mặt"
 
 @admin.register(Employee)
 class EmployeeAdmin(admin.ModelAdmin):
@@ -92,6 +99,9 @@ class EmployeeAdmin(admin.ModelAdmin):
 
 class CustomUserAdmin(BaseUserAdmin):
     inlines = (EmployeeInline,)
+    list_display = ('username', 'email', 'first_name', 'last_name', 'is_staff', 'is_active')
+    list_filter = ('is_staff', 'is_superuser', 'is_active')
+    search_fields = ('username', 'first_name', 'last_name', 'email')
 
 # Ghi đè User admin mặc định
 admin.site.unregister(User)
@@ -106,5 +116,12 @@ class AttendanceRecordAdmin(admin.ModelAdmin):
 
 @admin.register(Department)
 class DepartmentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'description', 'created_at')
-    search_fields = ('name',)
+    list_display = ('id', 'name', 'description', 'employee_count', 'created_at')
+    search_fields = ('name', 'description')
+    list_filter = ('created_at',)
+    ordering = ('name',)
+
+    def employee_count(self, obj):
+        """Số nhân viên trong phòng ban"""
+        return obj.get_employee_count()
+    employee_count.short_description = "Số nhân viên"

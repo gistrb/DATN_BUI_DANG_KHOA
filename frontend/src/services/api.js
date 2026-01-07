@@ -51,4 +51,9 @@ export const registerFace = async (employeeId, images) => {
     return response.data;
 };
 
+export const deleteFace = async (employeeId) => {
+    const response = await api.post('/delete-face/', { employee_id: employeeId });
+    return response.data;
+};
+
 export default api;

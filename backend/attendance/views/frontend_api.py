@@ -56,7 +56,7 @@ def dashboard_api(request):
     for emp in employees_qs:
         employees.append({
             'employee_id': emp.employee_id,
-            'full_name': emp.user.get_full_name(),
+            'full_name': emp.get_full_name(),
             'department': emp.department,
             'position': emp.position,
             'work_status': emp.work_status,
@@ -101,8 +101,8 @@ def employees_api(request):
         for emp in employees:
             data.append({
                 'employee_id': emp.employee_id,
-                'full_name': emp.user.get_full_name(),
-                'email': emp.user.email,
+                'full_name': emp.get_full_name(),
+                'email': emp.email or '',
                 'department': emp.department,
                 'position': emp.position,
                 'work_status': emp.work_status,
@@ -110,6 +110,7 @@ def employees_api(request):
                 'current_status': emp.current_status,
                 'join_date': emp.join_date.isoformat() if emp.join_date else None,
                 'has_face': emp.face_embeddings is not None,
+                'has_account': emp.user is not None,
             })
         
         # Get departments for filter
@@ -203,11 +204,11 @@ def employee_detail_api(request, employee_id):
             'success': True,
             'employee': {
                 'employee_id': employee.employee_id,
-                'username': employee.user.username,
-                'full_name': employee.user.get_full_name(),
-                'first_name': employee.user.first_name,
-                'last_name': employee.user.last_name,
-                'email': employee.user.email,
+                'username': employee.user.username if employee.user else None,
+                'full_name': employee.get_full_name(),
+                'first_name': employee.first_name,
+                'last_name': employee.last_name,
+                'email': employee.email or '',
                 'department': employee.department,
                 'position': employee.position,
                 'work_status': employee.work_status,
@@ -215,6 +216,7 @@ def employee_detail_api(request, employee_id):
                 'current_status': employee.current_status,
                 'join_date': employee.join_date.isoformat() if employee.join_date else None,
                 'has_face': employee.face_embeddings is not None,
+                'has_account': employee.user is not None,
             },
             'attendance_history': history,
         })
@@ -223,17 +225,18 @@ def employee_detail_api(request, employee_id):
         try:
             data = json.loads(request.body)
             
-            # Update user
+            # Update user (only if user exists)
             user = employee.user
-            if 'first_name' in data:
-                user.first_name = data['first_name']
-            if 'last_name' in data:
-                user.last_name = data['last_name']
-            if 'email' in data:
-                user.email = data['email']
-            if 'password' in data and data['password']:
-                user.set_password(data['password'])
-            user.save()
+            if user:
+                if 'first_name' in data:
+                    user.first_name = data['first_name']
+                if 'last_name' in data:
+                    user.last_name = data['last_name']
+                if 'email' in data:
+                    user.email = data['email']
+                if 'password' in data and data['password']:
+                    user.set_password(data['password'])
+                user.save()
             
             # Update employee
             if 'department' in data:
@@ -257,10 +260,11 @@ def employee_detail_api(request, employee_id):
     elif request.method == 'DELETE':
         user = employee.user
         employee.delete()
-        user.delete()
+        if user:
+            user.delete()
         return json_response({
             'success': True,
-            'message': 'Employee deleted successfully',
+            'message': 'Đã xóa nhân viên thành công',
         })
     
     return error_response('Method not allowed', 405)
@@ -332,7 +336,7 @@ def department_detail_api(request, pk):
         for emp in employees:
             emp_data.append({
                 'employee_id': emp.employee_id,
-                'full_name': emp.user.get_full_name(),
+                'full_name': emp.get_full_name(),
                 'position': emp.position,
                 'work_status': emp.work_status,
             })
@@ -369,10 +373,18 @@ def department_detail_api(request, pk):
             return error_response(str(e))
     
     elif request.method == 'DELETE':
+        # Check if department has employees
+        if employee_count > 0:
+            return error_response(
+                f'Không thể xóa phòng ban "{department.name}" vì còn {employee_count} nhân viên. '
+                f'Vui lòng chuyển nhân viên sang phòng ban khác trước khi xóa.',
+                400
+            )
+        
         department.delete()
         return json_response({
             'success': True,
-            'message': 'Department deleted successfully',
+            'message': 'Đã xóa phòng ban thành công',
         })
     
     return error_response('Method not allowed', 405)
@@ -401,21 +413,47 @@ def accounts_api(request):
                 'employee_id': employee.employee_id if employee else None,
             })
         
+        # Get employees without user accounts for account creation
+        available_employees = Employee.objects.filter(user__isnull=True)
+        available_list = []
+        for emp in available_employees:
+            available_list.append({
+                'employee_id': emp.employee_id,
+                'full_name': emp.get_full_name(),
+                'first_name': emp.first_name,
+                'last_name': emp.last_name,
+                'email': emp.email or '',
+                'department': emp.department,
+                'position': emp.position,
+            })
+        
         return json_response({
             'success': True,
             'accounts': data,
+            'available_employees': available_list,
         })
     
     elif request.method == 'POST':
         try:
             data = json.loads(request.body)
             
+            # Require employee_id for new accounts
+            employee_id = data.get('employee_id')
+            if not employee_id:
+                return error_response('Vui lòng chọn nhân viên để liên kết tài khoản')
+            
+            try:
+                employee = Employee.objects.get(employee_id=employee_id, user__isnull=True)
+            except Employee.DoesNotExist:
+                return error_response('Nhân viên không tồn tại hoặc đã có tài khoản')
+            
+            # Create user with employee's name
             user = User.objects.create_user(
                 username=data['username'],
                 password=data['password'],
-                email=data.get('email', ''),
-                first_name=data.get('first_name', ''),
-                last_name=data.get('last_name', ''),
+                email=employee.email or '',
+                first_name=employee.first_name,
+                last_name=employee.last_name,
             )
             
             if data.get('is_staff'):
@@ -424,9 +462,13 @@ def accounts_api(request):
                 user.is_superuser = True
             user.save()
             
+            # Link employee to user
+            employee.user = user
+            employee.save()
+            
             return json_response({
                 'success': True,
-                'message': 'Account created successfully',
+                'message': f'Đã tạo tài khoản và liên kết với nhân viên {employee_id}',
                 'id': user.id,
             }, 201)
             
@@ -497,14 +539,16 @@ def account_detail_api(request, pk):
             return error_response(str(e))
     
     elif request.method == 'DELETE':
-        # Don't delete the user if they have an employee record
+        # Unlink employee first if exists
         if hasattr(user, 'employee'):
-            return error_response('Cannot delete account with employee record. Delete employee first.')
+            employee = user.employee
+            employee.user = None
+            employee.save()
         
         user.delete()
         return json_response({
             'success': True,
-            'message': 'Account deleted successfully',
+            'message': 'Đã xóa tài khoản thành công',
         })
     
     return error_response('Method not allowed', 405)

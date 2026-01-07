@@ -28,7 +28,7 @@ const Sidebar = ({ show, onClose }) => {
     {
       path: '/admin/register-face',
       icon: 'bi-person-badge',
-      label: 'Đăng ký khuôn mặt',
+      label: 'Quản lý khuôn mặt',
     },
     {
       path: '/face-check',

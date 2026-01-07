@@ -7,8 +7,8 @@
 - [Cài Đặt & Chạy](#cài-đặt--chạy)
 - [Tính Năng](#tính-năng)
 - [Giao Diện](#giao-diện)
-  - [Web - Admin](#web---admin)
-  - [Web - Nhân viên](#web---nhân-viên)
+  - [Admin](#admin)
+  - [Nhân viên](#nhân-viên)
   - [Mobile App](#mobile-app)
 
 ---
@@ -105,9 +105,9 @@ npx expo start
 
 ## 🖼 Giao Diện
 
-### Web - Admin
+### Admin
 
-#### Đăng nhập Admin
+#### Đăng nhập Admin trên mobile
 
 ![Đăng nhập Admin](img/đăng%20nhập%20với%20tài%20khoản%20admin.png)
 
@@ -149,9 +149,9 @@ npx expo start
 
 ---
 
-### Web - Nhân viên
+### Nhân viên
 
-#### Đăng nhập Nhân viên
+#### Đăng nhập Nhân viên trên web
 
 ![Đăng nhập Nhân viên](img/đăng%20nhập%20bằng%20tài%20khoản%20nhân%20viên%20trên%20web.png)
 

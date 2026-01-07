@@ -5,12 +5,15 @@ import Swal from 'sweetalert2';
 
 const AccountListPage = () => {
   const [accounts, setAccounts] = useState([]);
+  const [availableEmployees, setAvailableEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const [formData, setFormData] = useState({
+    employee_id: '',
     username: '',
     password: '',
     first_name: '',
@@ -29,6 +32,7 @@ const AccountListPage = () => {
       const response = await api.get('/api/accounts/list/');
       if (response.data.success) {
         setAccounts(response.data.accounts);
+        setAvailableEmployees(response.data.available_employees || []);
       }
     } catch (error) {
       console.error('Error fetching accounts:', error);
@@ -42,6 +46,7 @@ const AccountListPage = () => {
     if (account) {
       setEditingAccount(account);
       setFormData({
+        employee_id: account.employee_id || '',
         username: account.username,
         password: '',
         first_name: account.first_name || '',
@@ -52,6 +57,7 @@ const AccountListPage = () => {
     } else {
       setEditingAccount(null);
       setFormData({
+        employee_id: '',
         username: '',
         password: '',
         first_name: '',
@@ -68,6 +74,15 @@ const AccountListPage = () => {
     setEditingAccount(null);
   };
 
+  const handleEmployeeSelect = (employeeId) => {
+    setFormData(prev => ({
+      ...prev,
+      employee_id: employeeId,
+      // Username suggestion: use employee_id as default
+      username: prev.username || employeeId.toLowerCase(),
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -77,6 +92,11 @@ const AccountListPage = () => {
       if (editingAccount) {
         response = await api.put(`/api/accounts/${editingAccount.id}/detail/`, formData);
       } else {
+        if (!formData.employee_id) {
+          Swal.fire('Lỗi', 'Vui lòng chọn nhân viên', 'error');
+          setSubmitting(false);
+          return;
+        }
         if (!formData.password) {
           Swal.fire('Lỗi', 'Vui lòng nhập mật khẩu', 'error');
           setSubmitting(false);
@@ -105,19 +125,18 @@ const AccountListPage = () => {
   };
 
   const handleDelete = async (account) => {
-    if (account.has_employee) {
-      Swal.fire('Không thể xóa', 'Tài khoản này đang liên kết với nhân viên. Vui lòng xóa nhân viên trước.', 'warning');
-      return;
-    }
+    const warningText = account.has_employee 
+      ? `Tài khoản "${account.username}" đang liên kết với nhân viên ${account.employee_id}. Xóa tài khoản sẽ hủy liên kết này (nhân viên vẫn được giữ lại).`
+      : `Bạn có chắc muốn xóa tài khoản "${account.username}"?`;
 
     const result = await Swal.fire({
       title: 'Xác nhận xóa',
-      text: `Bạn có chắc muốn xóa tài khoản "${account.username}"?`,
+      text: warningText,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#d33',
       cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Xóa',
+      confirmButtonText: 'Xóa tài khoản',
       cancelButtonText: 'Hủy'
     });
 
@@ -153,12 +172,48 @@ const AccountListPage = () => {
             <i className="bi bi-person-gear me-2"></i>
             Quản lý tài khoản
           </h3>
-          <button className="btn btn-light" onClick={() => handleOpenModal()}>
+          <button 
+            className="btn btn-light" 
+            onClick={() => handleOpenModal()}
+            disabled={availableEmployees.length === 0}
+            title={availableEmployees.length === 0 ? 'Không có nhân viên chưa có tài khoản' : ''}
+          >
             <i className="bi bi-plus-circle me-1"></i>
             Thêm tài khoản
           </button>
         </div>
         <div className="card-body">
+          {/* Notice if no available employees */}
+          {availableEmployees.length === 0 && (
+            <div className="alert alert-info mb-3">
+              <i className="bi bi-info-circle me-2"></i>
+              Tất cả nhân viên đều đã có tài khoản. Để thêm tài khoản mới, vui lòng tạo nhân viên trước.
+            </div>
+          )}
+          
+          {/* Search Box */}
+          <div className="mb-3">
+            <div className="input-group">
+              <span className="input-group-text">
+                <i className="bi bi-search"></i>
+              </span>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Tìm kiếm tài khoản..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button 
+                  className="btn btn-outline-secondary" 
+                  onClick={() => setSearchTerm('')}
+                >
+                  <i className="bi bi-x"></i>
+                </button>
+              )}
+            </div>
+          </div>
           <div className="table-responsive">
             <table className="table table-striped table-hover">
               <thead>
@@ -174,8 +229,16 @@ const AccountListPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {accounts.length > 0 ? (
-                  accounts.map((account, index) => (
+                {accounts.filter(acc => 
+                  acc.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (acc.full_name && acc.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                  (acc.email && acc.email.toLowerCase().includes(searchTerm.toLowerCase()))
+                ).length > 0 ? (
+                  accounts.filter(acc => 
+                    acc.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (acc.full_name && acc.full_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                    (acc.email && acc.email.toLowerCase().includes(searchTerm.toLowerCase()))
+                  ).map((account, index) => (
                     <tr key={account.id}>
                       <td>{index + 1}</td>
                       <td><strong>{account.username}</strong></td>
@@ -183,11 +246,11 @@ const AccountListPage = () => {
                       <td>{account.email || '-'}</td>
                       <td>
                         {account.is_superuser ? (
-                          <span className="badge bg-danger">Superuser</span>
+                          <span className="badge bg-danger">Admin (Super)</span>
                         ) : account.is_staff ? (
-                          <span className="badge bg-warning text-dark">Staff</span>
+                          <span className="badge bg-primary">Admin</span>
                         ) : (
-                          <span className="badge bg-secondary">User</span>
+                          <span className="badge bg-secondary">Nhân viên</span>
                         )}
                       </td>
                       <td>
@@ -217,9 +280,8 @@ const AccountListPage = () => {
                           </button>
                           <button
                             className="btn btn-danger"
-                            title="Xóa"
+                            title="Xóa tài khoản"
                             onClick={() => handleDelete(account)}
-                            disabled={account.has_employee}
                           >
                             <i className="bi bi-trash"></i>
                           </button>
@@ -254,6 +316,58 @@ const AccountListPage = () => {
               </div>
               <form onSubmit={handleSubmit}>
                 <div className="modal-body">
+                  {/* Employee Selection - Only for new accounts */}
+                  {!editingAccount && (
+                    <div className="mb-3">
+                      <label className="form-label">Chọn nhân viên *</label>
+                      <select
+                        className="form-select"
+                        value={formData.employee_id}
+                        onChange={(e) => handleEmployeeSelect(e.target.value)}
+                        required
+                      >
+                        <option value="">-- Chọn nhân viên --</option>
+                        {availableEmployees.map(emp => (
+                          <option key={emp.employee_id} value={emp.employee_id}>
+                            {emp.full_name} ({emp.employee_id}) - {emp.department}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="form-text">
+                        Mỗi nhân viên chỉ có một tài khoản duy nhất. Tên và email sẽ lấy từ thông tin nhân viên.
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Show selected employee info for new accounts */}
+                  {!editingAccount && formData.employee_id && (
+                    <div className="alert alert-info mb-3">
+                      <strong>Thông tin nhân viên:</strong><br/>
+                      {(() => {
+                        const emp = availableEmployees.find(e => e.employee_id === formData.employee_id);
+                        return emp ? (
+                          <>
+                            <span>Họ tên: {emp.full_name}</span><br/>
+                            <span>Email: {emp.email || '(chưa có)'}</span>
+                          </>
+                        ) : null;
+                      })()}
+                    </div>
+                  )}
+                  
+                  {/* Show linked employee for editing */}
+                  {editingAccount && editingAccount.employee_id && (
+                    <div className="mb-3">
+                      <label className="form-label">Nhân viên liên kết</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={editingAccount.employee_id}
+                        disabled
+                      />
+                    </div>
+                  )}
+                  
                   <div className="mb-3">
                     <label className="form-label">Username *</label>
                     <input
@@ -277,35 +391,40 @@ const AccountListPage = () => {
                       required={!editingAccount}
                     />
                   </div>
-                  <div className="row">
-                    <div className="col-md-6 mb-3">
-                      <label className="form-label">Họ</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.last_name}
-                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                      />
-                    </div>
-                    <div className="col-md-6 mb-3">
-                      <label className="form-label">Tên</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={formData.first_name}
-                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  <div className="mb-3">
-                    <label className="form-label">Email</label>
-                    <input
-                      type="email"
-                      className="form-control"
-                      value={formData.email}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    />
-                  </div>
+                  {/* Name/Email fields - Only for editing existing accounts */}
+                  {editingAccount && (
+                    <>
+                      <div className="row">
+                        <div className="col-md-6 mb-3">
+                          <label className="form-label">Họ</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={formData.last_name}
+                            onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                          />
+                        </div>
+                        <div className="col-md-6 mb-3">
+                          <label className="form-label">Tên</label>
+                          <input
+                            type="text"
+                            className="form-control"
+                            value={formData.first_name}
+                            onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                      <div className="mb-3">
+                        <label className="form-label">Email</label>
+                        <input
+                          type="email"
+                          className="form-control"
+                          value={formData.email}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="form-check">
                     <input
                       type="checkbox"
@@ -315,7 +434,7 @@ const AccountListPage = () => {
                       onChange={(e) => setFormData({ ...formData, is_staff: e.target.checked })}
                     />
                     <label className="form-check-label" htmlFor="isStaff">
-                      Quyền nhân viên (Staff)
+                      Truy cập trang Quản trị (Admin)
                     </label>
                   </div>
                 </div>

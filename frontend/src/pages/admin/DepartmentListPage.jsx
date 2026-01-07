@@ -10,6 +10,7 @@ const DepartmentListPage = () => {
   const [editingDept, setEditingDept] = useState(null);
   const [formData, setFormData] = useState({ name: '', description: '' });
   const [submitting, setSubmitting] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
     fetchDepartments();
@@ -98,7 +99,8 @@ const DepartmentListPage = () => {
           fetchDepartments();
         }
       } catch (error) {
-        Swal.fire('Lỗi', 'Không thể xóa phòng ban', 'error');
+        const message = error.response?.data?.message || 'Không thể xóa phòng ban';
+        Swal.fire('Lỗi', message, 'error');
       }
     }
   };
@@ -127,6 +129,29 @@ const DepartmentListPage = () => {
           </button>
         </div>
         <div className="card-body">
+          {/* Search Box */}
+          <div className="mb-3">
+            <div className="input-group">
+              <span className="input-group-text">
+                <i className="bi bi-search"></i>
+              </span>
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Tìm kiếm phòng ban..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button 
+                  className="btn btn-outline-secondary" 
+                  onClick={() => setSearchTerm('')}
+                >
+                  <i className="bi bi-x"></i>
+                </button>
+              )}
+            </div>
+          </div>
           <div className="table-responsive">
             <table className="table table-striped table-hover">
               <thead>
@@ -139,8 +164,14 @@ const DepartmentListPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {departments.length > 0 ? (
-                  departments.map((dept, index) => (
+                {departments.filter(dept => 
+                  dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  (dept.description && dept.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                ).length > 0 ? (
+                  departments.filter(dept => 
+                    dept.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (dept.description && dept.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                  ).map((dept, index) => (
                     <tr key={dept.id}>
                       <td>{index + 1}</td>
                       <td><strong>{dept.name}</strong></td>

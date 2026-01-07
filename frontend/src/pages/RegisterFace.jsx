@@ -2,7 +2,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks';
-import { registerFace } from '../services/api';
+import { registerFace, deleteFace } from '../services/api';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 
@@ -38,15 +38,16 @@ const RegisterFace = () => {
     }
   }, [isAdmin, navigate]);
 
+  const fetchEmployees = async () => {
+    try {
+      const response = await api.get('/api/employees/');
+      setEmployees(response.data.employees || []);
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+    }
+  };
+
   useEffect(() => {
-    const fetchEmployees = async () => {
-      try {
-        const response = await api.get('/api/employees/');
-        setEmployees(response.data.employees || []);
-      } catch (error) {
-        console.error('Error fetching employees:', error);
-      }
-    };
     fetchEmployees();
   }, []);
 
@@ -57,6 +58,8 @@ const RegisterFace = () => {
     duplicateChecked: false,
     isRunning: false
   });
+
+  const selectedEmployeeData = employees.find(e => e.employee_id === selectedEmployee);
 
   const startCapturing = useCallback(() => {
     if (!selectedEmployee) {
@@ -182,13 +185,17 @@ const RegisterFace = () => {
     try {
       const data = await registerFace(selectedEmployee, captures);
       if (data.success) {
-        setMessage({
-          type: 'success',
-          text: `Đăng ký thành công cho ${data.employee.name}! Đã lưu ${data.samples_count} mẫu.`
+        Swal.fire({
+          title: 'Thành công!',
+          text: `Đăng ký thành công cho ${data.employee.name}!`,
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false
         });
         setAllCaptures([]);
         setSelectedEmployee('');
-        setTimeout(() => window.location.reload(), 3000);
+        setMessage(null);
+        fetchEmployees(); // Refresh list to update status
       } else {
         setMessage({ type: 'danger', text: data.error || 'Đăng ký thất bại' });
       }
@@ -204,22 +211,55 @@ const RegisterFace = () => {
     }
   };
 
+  const handleDeleteFace = async () => {
+    const result = await Swal.fire({
+      title: 'Xóa dữ liệu khuôn mặt?',
+      text: `Bạn có chắc chắn muốn xóa dữ liệu của nhân viên ${selectedEmployeeData?.full_name}? Hành động này không thể hoàn tác.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Xóa dữ liệu',
+      cancelButtonText: 'Hủy'
+    });
+
+    if (result.isConfirmed) {
+      setLoading(true);
+      try {
+        const response = await deleteFace(selectedEmployee);
+        if (response.success) {
+          Swal.fire(
+            'Đã xóa!',
+            'Dữ liệu khuôn mặt đã được xóa.',
+            'success'
+          );
+          fetchEmployees(); // Refresh list
+          setSelectedEmployee(''); // Reset selection
+        }
+      } catch (error) {
+        Swal.fire('Lỗi', error.message || 'Không thể xóa dữ liệu', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const currentStage = POSE_STAGES[currentStageIndex] || POSE_STAGES[0];
 
   return (
     <div>
       <h2 className="mb-4">
-        <i className="bi bi-person-badge me-2"></i>
-        Đăng ký khuôn mặt nhân viên
+        <i className="bi bi-person-bounding-box me-2"></i>
+        Quản lý khuôn mặt
       </h2>
 
       <div className="row">
         <div className="col-lg-8">
           <div className="card">
-            <div className="card-header bg-warning text-dark">
+            <div className={`card-header text-white ${selectedEmployeeData?.has_face ? 'bg-primary' : 'bg-warning text-dark'}`}>
               <h5 className="mb-0">
-                <i className="bi bi-camera-video me-2"></i>
-                Thu thập khuôn mặt
+                <i className={`bi ${selectedEmployeeData?.has_face ? 'bi-hdd-network' : 'bi-camera-video'} me-2`}></i>
+                {selectedEmployeeData?.has_face ? 'Quản lý dữ liệu' : 'Thu thập khuôn mặt'}
               </h5>
             </div>
             <div className="card-body">
@@ -232,116 +272,154 @@ const RegisterFace = () => {
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                   disabled={isCapturing || loading}
                 >
-                  <option value="">-- Chọn nhân viên chưa có khuôn mặt --</option>
+                  <option value="">-- Chọn nhân viên --</option>
                   {employees.map(emp => (
                     <option key={emp.employee_id} value={emp.employee_id}>
-                      {emp.full_name} ({emp.employee_id})
+                      {emp.has_face ? '✓ ' : '⚪ '} 
+                      {emp.full_name} ({emp.employee_id}) 
+                      {emp.has_face ? ' [Đã đăng ký]' : ''}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Webcam */}
-              <div className="position-relative bg-black rounded overflow-hidden mb-3" style={{ aspectRatio: '16/9' }}>
-                <Webcam
-                  audio={false}
-                  ref={webcamRef}
-                  screenshotFormat="image/jpeg"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain'
-                  }}
-                  videoConstraints={{
-                    facingMode: "user",
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                  }}
-                />
-                <canvas ref={canvasRef} className="position-absolute top-0 start-0" />
-              </div>
+              {selectedEmployeeData?.has_face ? (
+                // DELETE INTERFACE
+                <div className="text-center py-5">
+                  <div className="mb-4">
+                    <i className="bi bi-person-check-fill text-success" style={{ fontSize: '4rem' }}></i>
+                    <h4 className="mt-3">Nhân viên đã đăng ký khuôn mặt</h4>
+                    <p className="text-muted">Dữ liệu khuôn mặt đã sẵn sàng để chấm công.</p>
+                  </div>
+                  
+                  <div className="alert alert-warning d-inline-block text-start" style={{ maxWidth: '500px' }}>
+                    <strong><i className="bi bi-exclamation-triangle me-2"></i>Lưu ý:</strong>
+                    Nếu nhân viên thay đổi ngoại hình đáng kể hoặc gặp khó khăn khi chấm công, bạn có thể xóa dữ liệu cũ và đăng ký lại.
+                  </div>
 
-              {/* Current Stage Indicator */}
-              {isCapturing && (
-                <div
-                  className="p-3 mb-3 rounded text-center text-white fw-bold fs-5"
-                  style={{ backgroundColor: currentStage.color }}
-                >
-                  {currentStage.name} ({currentStageCaptures}/{currentStage.required})
-                </div>
-              )}
-
-              {/* Pose Feedback */}
-              {poseFeedback && isCapturing && (
-                <div className="text-center mb-3">
-                  <span className="badge bg-primary fs-6 px-3 py-2">
-                    {poseFeedback}
-                  </span>
-                </div>
-              )}
-
-              {/* Stage Progress */}
-              <div className="mb-2">
-                <div className="progress" style={{ height: '20px' }}>
-                  <div
-                    className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
-                    role="progressbar"
-                    style={{ width: `${(currentStageCaptures / currentStage.required) * 100}%` }}
-                  >
-                    {currentStageCaptures > 0 && `${currentStageCaptures}/${currentStage.required}`}
+                  <div className="mt-4">
+                    <button 
+                      className="btn btn-danger btn-lg me-3"
+                      onClick={handleDeleteFace}
+                      disabled={loading}
+                    >
+                      {loading ? (
+                        <div className="spinner-border spinner-border-sm me-2"></div>
+                      ) : (
+                        <i className="bi bi-trash me-2"></i>
+                      )}
+                      Xóa dữ liệu khuôn mặt
+                    </button>
+                    
+                    {/* Optional: Allow re-register immediately? Maybe better to force delete first for safety */}
                   </div>
                 </div>
-              </div>
-
-              {/* Total Progress */}
-              <div className="mb-4">
-                <div className="d-flex justify-content-between mb-1">
-                  <small>Tổng tiến độ</small>
-                  <small>{allCaptures.length}/{TOTAL_REQUIRED} ảnh</small>
-                </div>
-                <div className="progress" style={{ height: '25px' }}>
-                  <div
-                    className="progress-bar bg-success"
-                    role="progressbar"
-                    style={{ width: `${(allCaptures.length / TOTAL_REQUIRED) * 100}%` }}
-                  >
-                    {allCaptures.length}/{TOTAL_REQUIRED}
+              ) : (
+                // REGISTER INTERFACE
+                <>
+                  {/* Webcam */}
+                  <div className="position-relative bg-black rounded overflow-hidden mb-3" style={{ aspectRatio: '16/9' }}>
+                    <Webcam
+                      audio={false}
+                      ref={webcamRef}
+                      screenshotFormat="image/jpeg"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'contain'
+                      }}
+                      videoConstraints={{
+                        facingMode: "user",
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                      }}
+                    />
+                    <canvas ref={canvasRef} className="position-absolute top-0 start-0" />
                   </div>
-                </div>
-              </div>
 
-              {/* Message Alert */}
-              {message && (
-                <div className={`alert alert-${message.type} mb-3`} role="alert">
-                  {message.text}
-                </div>
-              )}
-
-              {/* Action Button */}
-              <div className="text-center">
-                <button
-                  className="btn btn-lg btn-primary"
-                  onClick={startCapturing}
-                  disabled={!selectedEmployee || isCapturing || loading}
-                >
-                  {isCapturing ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2"></span>
-                      Đang thu thập...
-                    </>
-                  ) : loading ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2"></span>
-                      Đang xử lý...
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-camera me-2"></i>
-                      Bắt đầu thu thập
-                    </>
+                  {/* Current Stage Indicator */}
+                  {isCapturing && (
+                    <div
+                      className="p-3 mb-3 rounded text-center text-white fw-bold fs-5"
+                      style={{ backgroundColor: currentStage.color }}
+                    >
+                      {currentStage.name} ({currentStageCaptures}/{currentStage.required})
+                    </div>
                   )}
-                </button>
-              </div>
+
+                  {/* Pose Feedback */}
+                  {poseFeedback && isCapturing && (
+                    <div className="text-center mb-3">
+                      <span className="badge bg-primary fs-6 px-3 py-2">
+                        {poseFeedback}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Stage Progress */}
+                  <div className="mb-2">
+                    <div className="progress" style={{ height: '20px' }}>
+                      <div
+                        className="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                        role="progressbar"
+                        style={{ width: `${(currentStageCaptures / currentStage.required) * 100}%` }}
+                      >
+                        {currentStageCaptures > 0 && `${currentStageCaptures}/${currentStage.required}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Total Progress */}
+                  <div className="mb-4">
+                    <div className="d-flex justify-content-between mb-1">
+                      <small>Tổng tiến độ</small>
+                      <small>{allCaptures.length}/{TOTAL_REQUIRED} ảnh</small>
+                    </div>
+                    <div className="progress" style={{ height: '25px' }}>
+                      <div
+                        className="progress-bar bg-success"
+                        role="progressbar"
+                        style={{ width: `${(allCaptures.length / TOTAL_REQUIRED) * 100}%` }}
+                      >
+                        {allCaptures.length}/{TOTAL_REQUIRED}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Message Alert */}
+                  {message && (
+                    <div className={`alert alert-${message.type} mb-3`} role="alert">
+                      {message.text}
+                    </div>
+                  )}
+
+                  {/* Action Button */}
+                  <div className="text-center">
+                    <button
+                      className="btn btn-lg btn-primary"
+                      onClick={startCapturing}
+                      disabled={!selectedEmployee || isCapturing || loading}
+                    >
+                      {isCapturing ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          Đang thu thập...
+                        </>
+                      ) : loading ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          Đang xử lý...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-camera me-2"></i>
+                          Bắt đầu thu thập
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -355,43 +433,56 @@ const RegisterFace = () => {
               </h5>
             </div>
             <div className="card-body">
-              <ol className="mb-0">
-                <li className="mb-2">Chọn nhân viên từ danh sách</li>
-                <li className="mb-2">Nhấn "Bắt đầu thu thập"</li>
-                <li className="mb-2">Làm theo hướng dẫn tư thế:
-                  <ul className="mt-1">
-                    <li>Nhìn thẳng (1 ảnh)</li>
-                    <li>Xoay trái (1 ảnh)</li>
-                    <li>Xoay phải (1 ảnh)</li>
-                    <li>Ngẩng lên (1 ảnh)</li>
-                    <li>Cúi xuống (1 ảnh)</li>
-                  </ul>
-                </li>
-                <li className="mb-2">Hệ thống tự động lưu khi đủ ảnh</li>
-              </ol>
+              {selectedEmployeeData?.has_face ? (
+                 <div>
+                   <p><strong>Xóa dữ liệu:</strong></p>
+                   <ul className="mb-0">
+                     <li>Sử dụng khi nhân viên nghỉ việc hoặc cần đăng ký lại.</li>
+                     <li>Dữ liệu sau khi xóa sẽ không thể phục hồi.</li>
+                     <li>Nhân viên sẽ không thể chấm công cho đến khi đăng ký lại.</li>
+                   </ul>
+                 </div>
+              ) : (
+                <ol className="mb-0">
+                  <li className="mb-2">Chọn nhân viên từ danh sách</li>
+                  <li className="mb-2">Nhấn "Bắt đầu thu thập"</li>
+                  <li className="mb-2">Làm theo hướng dẫn tư thế:
+                    <ul className="mt-1">
+                      <li>Nhìn thẳng (1 ảnh)</li>
+                      <li>Xoay trái (1 ảnh)</li>
+                      <li>Xoay phải (1 ảnh)</li>
+                      <li>Ngẩng lên (1 ảnh)</li>
+                      <li>Cúi xuống (1 ảnh)</li>
+                    </ul>
+                  </li>
+                  <li className="mb-2">Hệ thống tự động lưu khi đủ ảnh</li>
+                </ol>
+              )}
             </div>
           </div>
 
-          {/* Stage Progress List */}
-          <div className="card mt-3">
-            <div className="card-header bg-secondary text-white">
-              <h6 className="mb-0">Các giai đoạn</h6>
+          {/* Stage Progress List - Only show when registering */}
+          {!selectedEmployeeData?.has_face && (
+            <div className="card mt-3">
+              <div className="card-header bg-secondary text-white">
+                <h6 className="mb-0">Các giai đoạn</h6>
+              </div>
+              <ul className="list-group list-group-flush">
+                {POSE_STAGES.map((stage, index) => (
+                  <li 
+                    key={stage.pose} 
+                    className={`list-group-item d-flex justify-content-between align-items-center ${
+                      index < currentStageIndex ? 'list-group-item-success' :
+                      index === currentStageIndex ? 'list-group-item-primary' : ''
+                    }`}
+                  >
+                    <span>{stage.name}</span>
+                    <span className="badge bg-secondary">{stage.required}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="list-group list-group-flush">
-              {POSE_STAGES.map((stage, index) => (
-                <li 
-                  key={stage.pose} 
-                  className={`list-group-item d-flex justify-content-between align-items-center ${
-                    index < currentStageIndex ? 'list-group-item-success' :
-                    index === currentStageIndex ? 'list-group-item-primary' : ''
-                  }`}
-                >
-                  <span>{stage.name}</span>
-                  <span className="badge bg-secondary">{stage.required}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          )}
         </div>
       </div>
     </div>

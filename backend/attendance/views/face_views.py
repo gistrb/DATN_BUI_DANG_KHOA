@@ -190,3 +190,36 @@ def register_face(request):
 
     from django.shortcuts import render
     return render(request, 'attendance/register_face.html', {'employees': employees})
+
+@csrf_exempt
+def delete_face(request):
+    """API để xóa dữ liệu khuôn mặt"""
+    if not request.user.is_authenticated or not request.user.is_staff:
+        return JsonResponse({'error': 'Permission denied'}, status=403)
+        
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            employee_id = data.get('employee_id')
+            
+            if not employee_id:
+                return JsonResponse({'error': 'Missing employee_id'}, status=400)
+                
+            employee = Employee.objects.get(employee_id=employee_id)
+            
+            if not employee.face_embeddings:
+                return JsonResponse({'error': 'Nhân viên chưa đăng ký khuôn mặt'}, status=400)
+                
+            employee.clear_face_embeddings()
+            
+            return JsonResponse({
+                'success': True,
+                'message': f'Đã xóa dữ liệu khuôn mặt của nhân viên {employee.user.get_full_name()}'
+            })
+            
+        except Employee.DoesNotExist:
+            return JsonResponse({'error': 'Không tìm thấy nhân viên'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+            
+    return JsonResponse({'error': 'Method not allowed'}, status=405)
