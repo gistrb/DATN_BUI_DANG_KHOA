@@ -5,10 +5,12 @@ import { useAuth } from '../hooks';
 import { registerFace, deleteFace } from '../services/api';
 import api from '../services/api';
 import Swal from 'sweetalert2';
+import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 
 const RegisterFace = () => {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
+  const faceLandmarkerRef = useRef(null);
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState('');
   const [allCaptures, setAllCaptures] = useState([]);
@@ -20,6 +22,27 @@ const RegisterFace = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
+
+  // Liveness detection states
+  const [livenessPhase, setLivenessPhase] = useState('idle'); // 'idle' | 'checking' | 'passed'
+  const [livenessModelLoaded, setLivenessModelLoaded] = useState(false);
+  const [blinkDetected, setBlinkDetected] = useState(false);
+  const eyeClosedRef = useRef(false);
+  const livenessTimeoutRef = useRef(null);
+
+  // Eye Aspect Ratio thresholds (same as FaceCheck.jsx)
+  const EAR_THRESHOLD = 0.25;
+  const EAR_OPEN_THRESHOLD = 0.28;
+
+  // MediaPipe Face Landmarker eye landmark indices
+  const LEFT_EYE_TOP = [159, 158, 157];
+  const LEFT_EYE_BOTTOM = [145, 153, 144];
+  const LEFT_EYE_LEFT = 33;
+  const LEFT_EYE_RIGHT = 133;
+  const RIGHT_EYE_TOP = [386, 385, 384];
+  const RIGHT_EYE_BOTTOM = [374, 380, 373];
+  const RIGHT_EYE_LEFT = 362;
+  const RIGHT_EYE_RIGHT = 263;
 
   const POSE_STAGES = [
     { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 1, color: '#0d6efd' },
@@ -61,30 +84,166 @@ const RegisterFace = () => {
 
   const selectedEmployeeData = employees.find(e => e.employee_id === selectedEmployee);
 
-  const startCapturing = useCallback(() => {
+  // Initialize FaceLandmarker for liveness detection
+  useEffect(() => {
+    const initLivenessModel = async () => {
+      try {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
+        );
+        const landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+            delegate: "CPU"
+          },
+          runningMode: "VIDEO",
+          numFaces: 1
+        });
+        faceLandmarkerRef.current = landmarker;
+        setLivenessModelLoaded(true);
+        console.log('[Liveness] FaceLandmarker model loaded');
+      } catch (error) {
+        console.error('[Liveness] Failed to load model:', error);
+      }
+    };
+    initLivenessModel();
+
+    return () => {
+      if (livenessTimeoutRef.current) {
+        clearTimeout(livenessTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Calculate Eye Aspect Ratio
+  const calculateEAR = useCallback((landmarks, eyeTop, eyeBottom, eyeLeft, eyeRight) => {
+    const dist = (a, b) => Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+    let verticalSum = 0;
+    for (let i = 0; i < eyeTop.length; i++) {
+      verticalSum += dist(landmarks[eyeTop[i]], landmarks[eyeBottom[i]]);
+    }
+    const avgVertical = verticalSum / eyeTop.length;
+    const horizontal = dist(landmarks[eyeLeft], landmarks[eyeRight]);
+    if (horizontal === 0) return 0;
+    return avgVertical / horizontal;
+  }, []);
+
+  // Detect blink from video
+  const detectBlink = useCallback((video) => {
+    if (!faceLandmarkerRef.current) return false;
+
+    try {
+      const result = faceLandmarkerRef.current.detectForVideo(video, performance.now());
+      
+      if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+        const landmarks = result.faceLandmarks[0];
+        
+        const leftEAR = calculateEAR(landmarks, LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_LEFT, LEFT_EYE_RIGHT);
+        const rightEAR = calculateEAR(landmarks, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT);
+        const avgEAR = (leftEAR + rightEAR) / 2;
+
+        console.log(`[Liveness] EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current}`);
+
+        if (avgEAR < EAR_THRESHOLD) {
+          eyeClosedRef.current = true;
+        } else if (eyeClosedRef.current && avgEAR > EAR_OPEN_THRESHOLD) {
+          console.log('[Liveness] BLINK DETECTED!');
+          eyeClosedRef.current = false;
+          return true;
+        }
+      }
+    } catch (error) {
+      console.error('[Liveness] Detection error:', error);
+    }
+    return false;
+  }, [calculateEAR, EAR_THRESHOLD, EAR_OPEN_THRESHOLD, LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_LEFT, LEFT_EYE_RIGHT, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT]);
+
+  // Start liveness check before capturing
+  const startLivenessCheck = useCallback(() => {
     if (!selectedEmployee) {
       setMessage({ type: 'warning', text: 'Vui lòng chọn nhân viên' });
       return;
     }
 
-    setIsCapturing(true);
-    setAllCaptures([]);
-    setCurrentStageIndex(0);
-    setCurrentStageCaptures(0);
-    setMessage({ type: 'info', text: 'Đang bắt đầu thu thập...' });
+    if (!livenessModelLoaded) {
+      setMessage({ type: 'warning', text: 'Đang tải model nhận diện, vui lòng chờ...' });
+      return;
+    }
 
-    stateRef.current = {
-      stageIndex: 0,
-      stageCaptures: 0,
-      totalCaptures: [],
-      duplicateChecked: false,
-      isRunning: true
+    setLivenessPhase('checking');
+    setBlinkDetected(false);
+    eyeClosedRef.current = false;
+    setMessage({ type: 'info', text: '👁️ Hãy chớp mắt để xác nhận người thật' });
+    setPoseFeedback('Nhìn vào camera và chớp mắt một lần');
+
+    const checkLiveness = () => {
+      const video = webcamRef.current?.video;
+      if (video && video.readyState === 4) {
+        const detected = detectBlink(video);
+        if (detected) {
+          setBlinkDetected(true);
+          setLivenessPhase('passed');
+          setMessage({ type: 'success', text: '✅ Xác nhận thành công! Bắt đầu thu thập ảnh...' });
+          setPoseFeedback('');
+          return;
+        }
+      }
+      livenessTimeoutRef.current = setTimeout(checkLiveness, 100);
     };
+
+    checkLiveness();
+  }, [selectedEmployee, livenessModelLoaded, detectBlink]);
+
+  // Cleanup liveness check on phase change
+  useEffect(() => {
+    if (livenessPhase !== 'checking' && livenessTimeoutRef.current) {
+      clearTimeout(livenessTimeoutRef.current);
+    }
+  }, [livenessPhase]);
+
+  // Auto start capturing when liveness passed
+  const shouldStartCaptureRef = useRef(false);
+  
+  useEffect(() => {
+    if (livenessPhase === 'passed' && blinkDetected && !isCapturing) {
+      shouldStartCaptureRef.current = true;
+      // Delay to show success message
+      const timer = setTimeout(() => {
+        if (shouldStartCaptureRef.current) {
+          setLivenessPhase('idle');
+          setBlinkDetected(false);
+          
+          // Trigger capturing
+          setIsCapturing(true);
+          setAllCaptures([]);
+          setCurrentStageIndex(0);
+          setCurrentStageCaptures(0);
+          setMessage({ type: 'info', text: 'Đang bắt đầu thu thập...' });
+
+          stateRef.current = {
+            stageIndex: 0,
+            stageCaptures: 0,
+            totalCaptures: [],
+            duplicateChecked: false,
+            isRunning: true
+          };
+        }
+      }, 500);
+      return () => {
+        clearTimeout(timer);
+        shouldStartCaptureRef.current = false;
+      };
+    }
+  }, [livenessPhase, blinkDetected, isCapturing]);
+
+  // Run frame processing when capturing starts
+  useEffect(() => {
+    if (!isCapturing || !stateRef.current.isRunning) return;
 
     const processFrame = async () => {
       if (!stateRef.current.isRunning) return;
 
-      const { stageIndex, stageCaptures } = stateRef.current;
+      const { stageIndex } = stateRef.current;
 
       if (stageIndex >= POSE_STAGES.length) {
         stateRef.current.isRunning = false;
@@ -176,7 +335,9 @@ const RegisterFace = () => {
     };
 
     processFrame();
-  }, [selectedEmployee]);
+  }, [isCapturing]);
+
+
 
   const handleRegisterWithCaptures = async (captures) => {
     setLoading(true);
@@ -270,14 +431,12 @@ const RegisterFace = () => {
                   className="form-select"
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
-                  disabled={isCapturing || loading}
+                  disabled={isCapturing || loading || livenessPhase === 'checking'}
                 >
-                  <option value="">-- Chọn nhân viên --</option>
-                  {employees.map(emp => (
+                  <option value="">-- Chọn nhân viên chưa đăng ký --</option>
+                  {employees.filter(emp => !emp.has_face).map(emp => (
                     <option key={emp.employee_id} value={emp.employee_id}>
-                      {emp.has_face ? '✓ ' : '⚪ '} 
-                      {emp.full_name} ({emp.employee_id}) 
-                      {emp.has_face ? ' [Đã đăng ký]' : ''}
+                      {emp.full_name} ({emp.employee_id})
                     </option>
                   ))}
                 </select>
@@ -393,14 +552,34 @@ const RegisterFace = () => {
                     </div>
                   )}
 
+                  {/* Liveness check feedback */}
+                  {livenessPhase === 'checking' && (
+                    <div className="text-center mb-3">
+                      <div className="alert alert-info d-flex align-items-center justify-content-center">
+                        <span className="spinner-border spinner-border-sm me-2"></span>
+                        <span>👁️ Nhìn vào camera và chớp mắt...</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Action Button */}
                   <div className="text-center">
                     <button
-                      className="btn btn-lg btn-primary"
-                      onClick={startCapturing}
-                      disabled={!selectedEmployee || isCapturing || loading}
+                      className={`btn btn-lg ${livenessPhase === 'checking' ? 'btn-info' : 'btn-primary'}`}
+                      onClick={startLivenessCheck}
+                      disabled={!selectedEmployee || isCapturing || loading || livenessPhase === 'checking' || !livenessModelLoaded}
                     >
-                      {isCapturing ? (
+                      {!livenessModelLoaded ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          Đang tải model...
+                        </>
+                      ) : livenessPhase === 'checking' ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-2"></span>
+                          Đang kiểm tra liveness...
+                        </>
+                      ) : isCapturing ? (
                         <>
                           <span className="spinner-border spinner-border-sm me-2"></span>
                           Đang thu thập...

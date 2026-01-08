@@ -135,19 +135,33 @@ def employees_api(request):
         try:
             data = json.loads(request.body)
             
-            # Create user
-            user = User.objects.create_user(
-                username=data['username'],
-                password=data['password'],
-                email=data.get('email', ''),
+            # Auto-generate employee_id if not provided
+            employee_id = data.get('employee_id')
+            if not employee_id:
+                # Find the highest employee_id and increment
+                last_employee = Employee.objects.filter(
+                    employee_id__startswith='NV'
+                ).order_by('-employee_id').first()
+                
+                if last_employee:
+                    try:
+                        last_num = int(last_employee.employee_id[2:])  # Extract number after 'NV'
+                        new_num = last_num + 1
+                    except ValueError:
+                        new_num = 1
+                else:
+                    new_num = 1
+                
+                employee_id = f'NV{new_num:03d}'  # Format: NV001, NV002, etc.
+            
+            # Create employee without user account
+            # User/account can be created separately via account management
+            employee = Employee.objects.create(
+                user=None,
+                employee_id=employee_id,
                 first_name=data.get('first_name', ''),
                 last_name=data.get('last_name', ''),
-            )
-            
-            # Create employee
-            employee = Employee.objects.create(
-                user=user,
-                employee_id=data['employee_id'],
+                email=data.get('email', ''),
                 department=data.get('department', ''),
                 position=data.get('position', ''),
                 work_status=data.get('work_status', 'WORKING'),
@@ -155,7 +169,7 @@ def employees_api(request):
             
             return json_response({
                 'success': True,
-                'message': 'Employee created successfully',
+                'message': f'Đã tạo nhân viên {employee_id} thành công',
                 'employee_id': employee.employee_id,
             }, 201)
             

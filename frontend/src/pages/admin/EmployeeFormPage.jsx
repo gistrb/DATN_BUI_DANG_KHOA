@@ -14,9 +14,6 @@ const EmployeeFormPage = () => {
   
   const [formData, setFormData] = useState({
     employee_id: '',
-    username: '',
-    password: '',
-    password_confirm: '',
     first_name: '',
     last_name: '',
     email: '',
@@ -51,9 +48,6 @@ const EmployeeFormPage = () => {
         const emp = response.data.employee;
         setFormData({
           employee_id: emp.employee_id,
-          username: emp.username,
-          password: '',
-          password_confirm: '',
           first_name: emp.first_name,
           last_name: emp.last_name,
           email: emp.email || '',
@@ -79,14 +73,9 @@ const EmployeeFormPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Validation
-    if (!isEditing && formData.password !== formData.password_confirm) {
-      Swal.fire('Lỗi', 'Mật khẩu xác nhận không khớp', 'error');
-      return;
-    }
-
-    if (!isEditing && !formData.password) {
-      Swal.fire('Lỗi', 'Vui lòng nhập mật khẩu', 'error');
+    // Validation - only check required fields
+    if (!formData.first_name || !formData.last_name) {
+      Swal.fire('Lỗi', 'Vui lòng nhập họ và tên nhân viên', 'error');
       return;
     }
 
@@ -154,94 +143,43 @@ const EmployeeFormPage = () => {
             <div className="card-body">
               <form onSubmit={handleSubmit}>
                 <div className="row">
-                  {/* Account Info */}
                   <div className="col-md-6">
-                    <h6 className="border-bottom pb-2 mb-3">Thông tin tài khoản</h6>
-                    
-                    <div className="mb-3">
-                      <label className="form-label">Mã nhân viên *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="employee_id"
-                        value={formData.employee_id}
-                        onChange={handleChange}
-                        required
-                        disabled={isEditing}
-                      />
-                      {isEditing && (
-                        <small className="text-muted">Không thể thay đổi mã nhân viên</small>
-                      )}
-                    </div>
+                    {isEditing && (
+                      <div className="mb-3">
+                        <label className="form-label">Mã nhân viên</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={formData.employee_id}
+                          disabled
+                        />
+                        <small className="text-muted">Mã nhân viên không thể thay đổi</small>
+                      </div>
+                    )}
 
                     <div className="mb-3">
-                      <label className="form-label">Tên đăng nhập *</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        name="username"
-                        value={formData.username}
-                        onChange={handleChange}
-                        required
-                        disabled={isEditing}
-                      />
-                      {isEditing && (
-                        <small className="text-muted">Không thể thay đổi tên đăng nhập</small>
-                      )}
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="form-label">
-                        Mật khẩu {isEditing ? '(để trống nếu không đổi)' : '*'}
-                      </label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        name="password"
-                        value={formData.password}
-                        onChange={handleChange}
-                        required={!isEditing}
-                      />
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="form-label">
-                        Xác nhận mật khẩu {!isEditing && '*'}
-                      </label>
-                      <input
-                        type="password"
-                        className="form-control"
-                        name="password_confirm"
-                        value={formData.password_confirm}
-                        onChange={handleChange}
-                        required={!isEditing}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Personal Info */}
-                  <div className="col-md-6">
-                    <h6 className="border-bottom pb-2 mb-3">Thông tin cá nhân</h6>
-
-                    <div className="mb-3">
-                      <label className="form-label">Họ</label>
+                      <label className="form-label">Họ *</label>
                       <input
                         type="text"
                         className="form-control"
                         name="last_name"
                         value={formData.last_name}
                         onChange={handleChange}
+                        required
+                        placeholder="Nguyễn"
                       />
                     </div>
 
                     <div className="mb-3">
-                      <label className="form-label">Tên</label>
+                      <label className="form-label">Tên *</label>
                       <input
                         type="text"
                         className="form-control"
                         name="first_name"
                         value={formData.first_name}
                         onChange={handleChange}
+                        required
+                        placeholder="Văn A"
                       />
                     </div>
 
@@ -253,16 +191,20 @@ const EmployeeFormPage = () => {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
+                        placeholder="email@company.com"
                       />
                     </div>
+                  </div>
 
+                  <div className="col-md-6">
                     <div className="mb-3">
-                      <label className="form-label">Phòng ban</label>
+                      <label className="form-label">Phòng ban *</label>
                       <select
                         className="form-select"
                         name="department"
                         value={formData.department}
                         onChange={handleChange}
+                        required
                       >
                         <option value="">-- Chọn phòng ban --</option>
                         {departments.map(dept => (
@@ -279,6 +221,7 @@ const EmployeeFormPage = () => {
                         name="position"
                         value={formData.position}
                         onChange={handleChange}
+                        placeholder="Nhân viên"
                       />
                     </div>
 
@@ -295,6 +238,13 @@ const EmployeeFormPage = () => {
                         <option value="TERMINATED">Đã nghỉ việc</option>
                       </select>
                     </div>
+
+                    {!isEditing && (
+                      <div className="alert alert-info">
+                        <i className="bi bi-info-circle me-2"></i>
+                        <small>Tài khoản đăng nhập có thể tạo riêng tại phần <strong>Quản lý tài khoản</strong></small>
+                      </div>
+                    )}
                   </div>
                 </div>
 
