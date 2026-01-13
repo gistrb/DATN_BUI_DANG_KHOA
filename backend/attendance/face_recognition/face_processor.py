@@ -17,7 +17,7 @@ class FaceProcessor:
         self.app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
-        self.similarity_threshold = 0.75
+        self.similarity_threshold = 0.65
         
         self.min_face_size = (64, 64)
         
@@ -29,29 +29,16 @@ class FaceProcessor:
         print("[FaceProcessor] Initialized with buffalo_l model")
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
-        """
-        Cải thiện chất lượng ảnh
-        Hiện tại: Trả về ảnh gốc để đảm bảo độ chính xác của model buffalo_l
-        """
         return image
-
-
 
     def compute_top_k_similarity(self, query_embedding: np.ndarray,stored_embeddings: list, k: int = None) -> float:
 
         if not stored_embeddings:
             return 0.0
         
-        # Debug: In thông tin embedding (đã disable)
-        # print(f"[compute_similarity] Query embedding shape: {query_embedding.shape}...")
-        
-        # Tính similarity với tất cả embeddings
         similarities = [self.compare_embeddings(query_embedding, emb) 
                        for emb in stored_embeddings]
         
-        # Sử dụng MAX thay vì weighted average
-        # Vì khi đăng ký nhiều góc (front/left/right/up/down), 
-        # chỉ cần 1 góc match tốt là đủ để xác nhận
         return max(similarities)
 
     def preprocess_image(self, image: np.ndarray) -> np.ndarray:
@@ -66,16 +53,13 @@ class FaceProcessor:
     def extract_embedding(self, image: np.ndarray, use_enhancement: bool = True) -> Optional[np.ndarray]:
 
         try:
-            # Áp dụng image enhancement để tăng độ chính xác
             if use_enhancement:
                 processed_image = self.enhance_image(image)
             else:
                 processed_image = image
             
-            # InsightFace yêu cầu ảnh BGR (OpenCV format)
             faces = self.app.get(processed_image)
             
-            # Nếu không tìm thấy face với ảnh enhanced, thử lại với ảnh gốc
             if not faces and use_enhancement:
                 print("[extract_embedding] Thử lại với ảnh gốc...")
                 faces = self.app.get(image)
@@ -83,13 +67,11 @@ class FaceProcessor:
             if not faces:
                 return None
             
-            # Lấy khuôn mặt lớn nhất
             faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
             face = faces[0]
             
             embedding = face.embedding
             
-            # Chuẩn hóa embedding (L2 normalization)
             norm = np.linalg.norm(embedding)
             if norm > 0:
                 embedding = embedding / norm
@@ -115,13 +97,12 @@ class FaceProcessor:
             return 0.0
 
     def l2_distance(self, emb1: np.ndarray, emb2: np.ndarray) -> float:
-        """L2 (Euclidean) Distance: 0 = giống hoàn toàn"""
         try:
             emb1 = np.array(emb1).flatten()
             emb2 = np.array(emb2).flatten()
             return float(np.linalg.norm(emb1 - emb2))
         except:
-            return 2.0  # Max distance for normalized vectors
+            return 2.0
 
     def compare_embeddings(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
 
@@ -130,37 +111,27 @@ class FaceProcessor:
     def check_image_quality(self, image: np.ndarray, face_bbox: List[float]) -> Dict[str, Any]:
 
         try:
-            # Chuyển sang grayscale để tính toán
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             
-            # 1. Tính độ sáng trung bình
             brightness = np.mean(gray)
             
-            # 2. Tính kích thước khuôn mặt
             x1, y1, x2, y2 = face_bbox
             face_width = x2 - x1
             face_height = y2 - y1
             face_area = face_width * face_height
             
-            # 3. Tính độ nét (Laplacian variance)
-            # Giá trị cao = ảnh nét, giá trị thấp = ảnh mờ
             face_region = gray[int(y1):int(y2), int(x1):int(x2)]
             if face_region.size > 0:
                 blur_score = cv2.Laplacian(face_region, cv2.CV_64F).var()
             else:
                 blur_score = 0
             
-            # Tiêu chuẩn chất lượng:
-            # - Độ sáng: 50-220 (tránh quá tối hoặc quá sáng)
-            # - Diện tích khuôn mặt: > 10000 pixels
-            # - Độ nét: > 100 (Laplacian variance)
             is_bright_enough = 50 < brightness < 220
             is_face_large_enough = face_area > 10000
             is_sharp_enough = blur_score > 100
             
             is_valid = is_bright_enough and is_face_large_enough and is_sharp_enough
             
-            # Tạo thông báo chi tiết
             if not is_valid:
                 issues = []
                 if not is_bright_enough:
@@ -201,27 +172,19 @@ class FaceProcessor:
             if not faces:
                 return None
             
-            # Lấy khuôn mặt lớn nhất
             faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
             face = faces[0]
             
-            # InsightFace cung cấp pose - đã là degrees rồi, KHÔNG cần convert
             if hasattr(face, 'pose') and face.pose is not None:
-                # InsightFace's pose có thể có thứ tự khác!
-                # Thử nghiệm: hoán đổi và đảo dấu
                 raw_0 = float(face.pose[0])
                 raw_1 = float(face.pose[1])
                 raw_2 = float(face.pose[2])
                 
-                # Dựa trên feedback: yaw và pitch bị hoán đổi + đảo dấu
-                # pitch ở index 0, yaw ở index 1
-                pitch_raw = raw_0   # KHÔNG đảo dấu pitch (đã test)
-                yaw_raw = -raw_1    # Đảo dấu yaw
+                pitch_raw = raw_0
+                yaw_raw = -raw_1
                 roll_raw = raw_2
                 
-                # Normalize về khoảng -180 đến 180
                 def normalize_angle(angle):
-                    """Normalize góc về khoảng -180 đến 180"""
                     while angle > 180:
                         angle -= 360
                     while angle < -180:
@@ -235,7 +198,6 @@ class FaceProcessor:
                 print(f"[detect_pose] Raw [0]={raw_0:.2f}, [1]={raw_1:.2f}, [2]={raw_2:.2f}")
                 print(f"[detect_pose] After swap+flip: yaw={yaw:.2f}°, pitch={pitch:.2f}°, roll={roll:.2f}°")
             else:
-                # Nếu model không hỗ trợ pose, trả về front
                 print("[detect_pose] Model không hỗ trợ pose detection - sử dụng phương pháp dự phòng")
                 return {
                     'yaw': 0.0,
@@ -245,7 +207,6 @@ class FaceProcessor:
                     'bbox': [int(x) for x in face.bbox]
                 }
             
-            # Phân loại tư thế
             pose_type = self._classify_pose(yaw, pitch)
             print(f"[detect_pose] Classified as: {pose_type}")
             
@@ -265,20 +226,18 @@ class FaceProcessor:
     
     def _classify_pose(self, yaw: float, pitch: float) -> str:
 
-        if abs(yaw) > 20:  # Nếu xoay trái/phải rõ ràng
+        if abs(yaw) > 20:
             if yaw < -20:
-                return 'left'    # Xoay trái
+                return 'left'
             elif yaw > 20:
-                return 'right'   # Xoay phải
+                return 'right'
         
-        # Sau đó mới kiểm tra pitch (lên/xuống)
-        if abs(pitch) > 20:  # Nếu ngẩng/cúi rõ ràng
+        if abs(pitch) > 20:
             if pitch > 20:
-                return 'up'      # Ngẩng đầu
+                return 'up'
             elif pitch < -20:
-                return 'down'    # Cúi đầu
+                return 'down'
         
-        # Nếu cả yaw và pitch đều nhỏ → chính diện
         return 'front'
 
     def _validate_image(self, image: np.ndarray) -> bool:
@@ -293,7 +252,6 @@ class FaceProcessor:
         return True
 
     def register_face(self, image: np.ndarray, employee_id: int) -> bool:
-        """Đăng ký khuôn mặt mới cho nhân viên"""
         print(f"[register_face] Bắt đầu đăng ký cho nhân viên: {employee_id}")
 
         embedding = self.extract_embedding(image)
@@ -312,16 +270,12 @@ class FaceProcessor:
         query_embedding = None
         bbox = None
 
-        # Kiểm tra xem đầu vào là ảnh hay embedding
         if isinstance(image, np.ndarray) and image.ndim == 3:
-            # Nếu là ảnh, áp dụng enhancement và lấy embedding
             try:
-                # Áp dụng image enhancement để tăng độ chính xác
                 enhanced_image = self.enhance_image(image)
                 
                 faces = self.app.get(enhanced_image)
                 
-                # Fallback: thử lại với ảnh gốc nếu không detect được
                 if not faces:
                     print("[verify_face] Thử lại với ảnh gốc...")
                     faces = self.app.get(image)
@@ -329,11 +283,9 @@ class FaceProcessor:
                 if not faces:
                     return None
                 
-                # Lấy khuôn mặt lớn nhất
                 faces = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0]) * (x.bbox[3]-x.bbox[1]), reverse=True)
                 face = faces[0]
                 
-                # Lấy bbox (convert to list of int)
                 bbox = [int(x) for x in face.bbox]
                 
                 embedding = face.embedding
@@ -350,8 +302,6 @@ class FaceProcessor:
 
         if query_embedding is None:
             return None
-
-
 
         result = None
 
@@ -370,9 +320,8 @@ class FaceProcessor:
                     print(f"[verify_face] {employee.employee_id}: Không có embeddings hợp lệ")
                     continue
 
-                # Sử dụng Top-K weighted average thay vì max
                 employee_similarity = self.compute_top_k_similarity(query_embedding, embs)
-                print(f"[verify_face] {employee.employee_id} ({employee.user.get_full_name()}): similarity = {employee_similarity:.4f}, embeddings count = {len(embs)}")
+                print(f"[verify_face] {employee.employee_id} ({employee.get_full_name()}): similarity = {employee_similarity:.4f}, embeddings count = {len(embs)}")
                 
                 if employee_similarity > max_similarity:
                     max_similarity = employee_similarity
@@ -383,7 +332,7 @@ class FaceProcessor:
             if max_similarity >= self.similarity_threshold and matched_employee:
                 result = {
                     'employee_id': matched_employee.employee_id,
-                    'full_name': matched_employee.user.get_full_name(),
+                    'full_name': matched_employee.get_full_name(),
                     'department': matched_employee.department,
                     'position': matched_employee.position,
                     'similarity_score': float(max_similarity),
@@ -391,20 +340,17 @@ class FaceProcessor:
                     'current_status': matched_employee.current_status
                 }
         else:
-            # Sử dụng Top-K matching cho stored_embeddings
             max_similarity = self.compute_top_k_similarity(query_embedding, stored_embeddings)
 
             if max_similarity >= self.similarity_threshold:
                 result = True
 
-        # Nếu có kết quả và có bbox, thêm bbox vào kết quả
         if result and isinstance(result, dict) and bbox:
             result['bbox'] = bbox
             
         return result
 
     def save_embedding_to_db(self, employee_id: int, embedding: np.ndarray) -> bool:
-        """Lưu embedding mới vào database"""
         from attendance.models import Employee
         try:
             employee = Employee.objects.get(id=employee_id)
@@ -421,7 +367,6 @@ class FaceProcessor:
             return False
 
     def clear_face_data(self, employee_id: int) -> bool:
-        """Xóa dữ liệu khuôn mặt của nhân viên"""
         try:
             from attendance.models import Employee
             employee = Employee.objects.get(id=employee_id)
@@ -433,5 +378,4 @@ class FaceProcessor:
             return False
 
     def get_face_embedding(self, image: np.ndarray) -> Optional[np.ndarray]:
-        """Alias cho phương thức extract_embedding"""
         return self.extract_embedding(image)

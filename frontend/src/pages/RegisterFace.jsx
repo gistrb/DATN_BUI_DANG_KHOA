@@ -362,9 +362,10 @@ const RegisterFace = () => {
       }
     } catch (error) {
       console.error('FAILED TO REGISTER:', error);
+      const errorData = error.response?.data || error;
       setMessage({
         type: 'danger',
-        text: error.error || error.details || error.message || 'Đã xảy ra lỗi khi đăng ký'
+        text: errorData.error || errorData.details || errorData.message || 'Đã xảy ra lỗi khi đăng ký'
       });
     } finally {
       setLoading(false);
@@ -433,13 +434,20 @@ const RegisterFace = () => {
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                   disabled={isCapturing || loading || livenessPhase === 'checking'}
                 >
-                  <option value="">-- Chọn nhân viên chưa đăng ký --</option>
-                  {employees.filter(emp => !emp.has_face).map(emp => (
+                  <option value="">-- Chọn nhân viên --</option>
+                  {employees.map(emp => (
                     <option key={emp.employee_id} value={emp.employee_id}>
-                      {emp.full_name} ({emp.employee_id})
+                      {emp.has_face ? '✅ ' : '⚪ '}{emp.full_name} {emp.has_face ? '- Đã đăng ký' : '- Chưa đăng ký'}
                     </option>
                   ))}
                 </select>
+                {selectedEmployee && (
+                  <small className={`form-text ${selectedEmployeeData?.has_face ? 'text-success' : 'text-warning'}`}>
+                    {selectedEmployeeData?.has_face 
+                      ? '✅ Nhân viên này đã có dữ liệu khuôn mặt' 
+                      : '⚠️ Nhân viên này chưa đăng ký khuôn mặt'}
+                  </small>
+                )}
               </div>
 
               {selectedEmployeeData?.has_face ? (

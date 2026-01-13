@@ -169,13 +169,13 @@ def employees_without_face_api(request):
     try:
         employees = Employee.objects.filter(
             is_active=True
-        ).select_related('user').order_by('user__first_name', 'user__last_name')
+        ).select_related('user').order_by('first_name', 'last_name')
         
         employee_list = []
         for emp in employees:
             employee_list.append({
                 'employee_id': emp.employee_id,
-                'full_name': emp.user.get_full_name(),
+                'full_name': emp.get_full_name(),
                 'department': emp.department,
                 'position': emp.position,
                 'has_face': bool(emp.face_embeddings)

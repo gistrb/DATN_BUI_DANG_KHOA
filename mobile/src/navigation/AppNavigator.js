@@ -1,16 +1,24 @@
 import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
-import LoginScreen from '../screens/auth/LoginScreen';
-import HomeScreen from '../screens/home/HomeScreen';
+import PublicNavigator from './PublicNavigator';
+import PrivateNavigator from './PrivateNavigator';
 
 const AppNavigator = () => {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, userInfo } = useAuth();
 
-  if (isLoggedIn) {
-    return <HomeScreen />;
-  }
-
-  return <LoginScreen />;
+  return (
+    <NavigationContainer>
+      {isLoggedIn && userInfo?.employee_id ? (
+        <PrivateNavigator />
+      ) : isLoggedIn && !userInfo?.employee_id ? (
+        // Admin user - show public navigator but logged in
+        <PublicNavigator />
+      ) : (
+        <PublicNavigator />
+      )}
+    </NavigationContainer>
+  );
 };
 
 export default AppNavigator;

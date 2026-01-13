@@ -5,7 +5,9 @@ from .push_notification import register_push_token, send_attendance_notification
 from .frontend_api import (
     dashboard_api, employees_api, employee_detail_api,
     departments_api, department_detail_api,
-    accounts_api, account_detail_api
+    accounts_api, account_detail_api,
+    department_stats_api, export_department_stats_excel,
+    department_employees_attendance_api
 )
 
 __all__ = [
@@ -16,4 +18,6 @@ __all__ = [
     'dashboard_api', 'employees_api', 'employee_detail_api',
     'departments_api', 'department_detail_api',
     'accounts_api', 'account_detail_api',
+    'department_stats_api', 'export_department_stats_excel',
+    'department_employees_attendance_api',
 ]

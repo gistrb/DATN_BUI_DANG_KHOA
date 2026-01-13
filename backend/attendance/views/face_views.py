@@ -104,7 +104,7 @@ def register_face(request):
     employees = Employee.objects.filter(
         is_active=True,
         face_embeddings__isnull=True
-    ).order_by('user__first_name', 'user__last_name')
+    ).order_by('first_name', 'last_name')
 
     if request.method == 'POST':
         try:
@@ -131,18 +131,19 @@ def register_face(request):
                 embedding = face_processor.get_face_embedding(image)
                 
                 if embedding is not None:
-                    # Kiểm tra chất lượng ảnh
-                    # Lấy bbox để tính diện tích khuôn mặt
-                    faces = face_processor.app.get(image)
-                    if faces:
-                        bbox = faces[0].bbox
-                        quality_check = face_processor.check_image_quality(image, bbox)
-                        
-                        if not quality_check['is_valid']:
-                            return JsonResponse({
-                                'error': 'Chất lượng ảnh không đạt yêu cầu',
-                                'details': f"Ảnh thứ {len(embeddings)+1}: {quality_check['message']}"
-                            }, status=400)
+                    # [TEST] Comment đoạn kiểm tra chất lượng ảnh
+                    # # Kiểm tra chất lượng ảnh
+                    # # Lấy bbox để tính diện tích khuôn mặt
+                    # faces = face_processor.app.get(image)
+                    # if faces:
+                    #     bbox = faces[0].bbox
+                    #     quality_check = face_processor.check_image_quality(image, bbox)
+                    #     
+                    #     if not quality_check['is_valid']:
+                    #         return JsonResponse({
+                    #             'error': 'Chất lượng ảnh không đạt yêu cầu',
+                    #             'details': f"Ảnh thứ {len(embeddings)+1}: {quality_check['message']}"
+                    #         }, status=400)
 
                     if not checked_duplicate:
                         existing_face = face_processor.verify_face(embedding)
@@ -169,7 +170,7 @@ def register_face(request):
                 'message': 'Đăng ký khuôn mặt thành công',
                 'employee': {
                     'id': employee.employee_id,
-                    'name': employee.user.get_full_name(),
+                    'name': employee.get_full_name(),
                     'department': employee.department,
                     'position': employee.position,
                 },
@@ -214,7 +215,7 @@ def delete_face(request):
             
             return JsonResponse({
                 'success': True,
-                'message': f'Đã xóa dữ liệu khuôn mặt của nhân viên {employee.user.get_full_name()}'
+                'message': f'Đã xóa dữ liệu khuôn mặt của nhân viên {employee.get_full_name()}'
             })
             
         except Employee.DoesNotExist:

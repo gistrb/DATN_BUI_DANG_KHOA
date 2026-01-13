@@ -35,6 +35,11 @@ const Sidebar = ({ show, onClose }) => {
       icon: 'bi-camera-video',
       label: 'Chấm công',
     },
+    {
+      path: '/admin/statistics',
+      icon: 'bi-bar-chart-line',
+      label: 'Thống kê',
+    },
   ];
 
   const isActive = (path) => {

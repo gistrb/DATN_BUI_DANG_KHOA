@@ -26,4 +26,7 @@ urlpatterns = [
     path('api/departments/<int:pk>/detail/', views.department_detail_api, name='api_department_detail'),
     path('api/accounts/list/', views.accounts_api, name='api_accounts_list'),
     path('api/accounts/<int:pk>/detail/', views.account_detail_api, name='api_account_detail'),
+    path('api/department-stats/', views.department_stats_api, name='api_department_stats'),
+    path('api/department-stats/export/', views.export_department_stats_excel, name='api_department_stats_export'),
+    path('api/dept-employees/<str:department_name>/', views.department_employees_attendance_api, name='api_department_employees_attendance'),
 ]

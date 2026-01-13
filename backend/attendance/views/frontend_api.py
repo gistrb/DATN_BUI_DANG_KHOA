@@ -566,3 +566,438 @@ def account_detail_api(request, pk):
         })
     
     return error_response('Method not allowed', 405)
+
+
+@csrf_exempt
+def department_stats_api(request):
+    """API to get department attendance statistics"""
+    if request.method != 'GET':
+        return error_response('Method not allowed', 405)
+    
+    from datetime import datetime
+    from django.db.models import Count, Q
+    
+    vietnam_now = get_vietnam_now()
+    
+    # Get filter parameters
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    department_filter = request.GET.get('department')
+    
+    # Default to current month
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = vietnam_now.date().replace(day=1)
+    else:
+        start_date = vietnam_now.date().replace(day=1)
+    
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            end_date = vietnam_now.date()
+    else:
+        end_date = vietnam_now.date()
+    
+    # Get all departments
+    departments = Department.objects.all()
+    if department_filter:
+        departments = departments.filter(name=department_filter)
+    
+    department_stats = []
+    total_stats = {
+        'total_employees': 0,
+        'total_records': 0,
+        'on_time': 0,
+        'late': 0,
+        'early': 0,
+        'absent': 0,
+    }
+    
+    for dept in departments:
+        # Get employees in this department
+        employees = Employee.objects.filter(department=dept.name, work_status='WORKING')
+        employee_count = employees.count()
+        
+        # Get attendance records for this department within date range
+        records = AttendanceRecord.objects.filter(
+            employee__department=dept.name,
+            date__gte=start_date,
+            date__lte=end_date
+        )
+        
+        record_count = records.count()
+        on_time = records.filter(status='ON_TIME').count()
+        late = records.filter(status='LATE').count()
+        early = records.filter(status='EARLY').count()
+        absent = records.filter(status='ABSENT').count()
+        
+        # Calculate attendance rate
+        working_days = (end_date - start_date).days + 1
+        expected_records = employee_count * working_days
+        attendance_rate = (record_count / expected_records * 100) if expected_records > 0 else 0
+        on_time_rate = (on_time / record_count * 100) if record_count > 0 else 0
+        
+        dept_data = {
+            'id': dept.id,
+            'name': dept.name,
+            'employee_count': employee_count,
+            'total_records': record_count,
+            'on_time': on_time,
+            'late': late,
+            'early': early,
+            'absent': absent,
+            'attendance_rate': round(attendance_rate, 1),
+            'on_time_rate': round(on_time_rate, 1),
+        }
+        department_stats.append(dept_data)
+        
+        # Update totals
+        total_stats['total_employees'] += employee_count
+        total_stats['total_records'] += record_count
+        total_stats['on_time'] += on_time
+        total_stats['late'] += late
+        total_stats['early'] += early
+        total_stats['absent'] += absent
+    
+    # Sort by employee count descending
+    department_stats.sort(key=lambda x: x['employee_count'], reverse=True)
+    
+    return json_response({
+        'success': True,
+        'department_stats': department_stats,
+        'total_stats': total_stats,
+        'filters': {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'department': department_filter,
+        },
+        'departments': list(Department.objects.values_list('name', flat=True)),
+    })
+
+
+@csrf_exempt
+def export_department_stats_excel(request):
+    """Export department statistics to Excel file with detailed employee data"""
+    if request.method != 'GET':
+        return error_response('Method not allowed', 405)
+    
+    from django.http import HttpResponse
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
+    from datetime import datetime
+    import io
+    
+    vietnam_now = get_vietnam_now()
+    vietnam_tz = vietnam_now.tzinfo
+    
+    # Get filter parameters
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    department_filter = request.GET.get('department')
+    
+    # Default to current month
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = vietnam_now.date().replace(day=1)
+    else:
+        start_date = vietnam_now.date().replace(day=1)
+    
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            end_date = vietnam_now.date()
+    else:
+        end_date = vietnam_now.date()
+    
+    # Create workbook
+    wb = Workbook()
+    
+    # Styles
+    header_font = Font(bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+    dept_fill = PatternFill(start_color="198754", end_color="198754", fill_type="solid")
+    header_alignment = Alignment(horizontal="center", vertical="center")
+    thin_border = Border(
+        left=Side(style='thin'),
+        right=Side(style='thin'),
+        top=Side(style='thin'),
+        bottom=Side(style='thin')
+    )
+    
+    # Status colors
+    status_fills = {
+        'ON_TIME': PatternFill(start_color="D4EDDA", end_color="D4EDDA", fill_type="solid"),
+        'LATE': PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid"),
+        'EARLY': PatternFill(start_color="FFF3CD", end_color="FFF3CD", fill_type="solid"),
+    }
+    
+    # ===== SHEET 1: Summary by Department =====
+    ws1 = wb.active
+    ws1.title = "Tổng hợp phòng ban"
+    
+    # Title
+    ws1.merge_cells('A1:H1')
+    ws1['A1'] = "BÁO CÁO THỐNG KÊ CHẤM CÔNG THEO PHÒNG BAN"
+    ws1['A1'].font = Font(bold=True, size=16)
+    ws1['A1'].alignment = Alignment(horizontal="center")
+    
+    ws1.merge_cells('A2:H2')
+    ws1['A2'] = f"Từ ngày {start_date.strftime('%d/%m/%Y')} đến ngày {end_date.strftime('%d/%m/%Y')}"
+    ws1['A2'].alignment = Alignment(horizontal="center")
+    
+    # Headers
+    headers = ['STT', 'Phòng ban', 'Số NV', 'Tổng lượt', 'Đúng giờ', 'Đi trễ', 'Về sớm', 'Tỷ lệ đúng giờ (%)']
+    for col, header in enumerate(headers, 1):
+        cell = ws1.cell(row=4, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    # Get departments
+    departments = Department.objects.all()
+    if department_filter:
+        departments = departments.filter(name=department_filter)
+    
+    row = 5
+    for idx, dept in enumerate(departments, 1):
+        employees = Employee.objects.filter(department=dept.name, work_status='WORKING')
+        employee_count = employees.count()
+        
+        records = AttendanceRecord.objects.filter(
+            employee__department=dept.name,
+            date__gte=start_date,
+            date__lte=end_date
+        )
+        
+        record_count = records.count()
+        on_time = records.filter(status='ON_TIME').count()
+        late = records.filter(status='LATE').count()
+        early = records.filter(status='EARLY').count()
+        on_time_rate = (on_time / record_count * 100) if record_count > 0 else 0
+        
+        data = [idx, dept.name, employee_count, record_count, on_time, late, early, round(on_time_rate, 1)]
+        for col, value in enumerate(data, 1):
+            cell = ws1.cell(row=row, column=col, value=value)
+            cell.border = thin_border
+            if col in [3, 4, 5, 6, 7, 8]:
+                cell.alignment = Alignment(horizontal="center")
+        row += 1
+    
+    # Adjust column widths for sheet 1
+    ws1.column_dimensions['A'].width = 6
+    ws1.column_dimensions['B'].width = 25
+    ws1.column_dimensions['C'].width = 10
+    ws1.column_dimensions['D'].width = 12
+    ws1.column_dimensions['E'].width = 12
+    ws1.column_dimensions['F'].width = 10
+    ws1.column_dimensions['G'].width = 10
+    ws1.column_dimensions['H'].width = 18
+    
+    # ===== SHEET 2: Detailed Employee Attendance =====
+    ws2 = wb.create_sheet(title="Chi tiết chấm công")
+    
+    # Title
+    ws2.merge_cells('A1:G1')
+    ws2['A1'] = "CHI TIẾT CHẤM CÔNG NHÂN VIÊN THEO PHÒNG BAN"
+    ws2['A1'].font = Font(bold=True, size=16)
+    ws2['A1'].alignment = Alignment(horizontal="center")
+    
+    ws2.merge_cells('A2:G2')
+    ws2['A2'] = f"Từ ngày {start_date.strftime('%d/%m/%Y')} đến ngày {end_date.strftime('%d/%m/%Y')}"
+    ws2['A2'].alignment = Alignment(horizontal="center")
+    
+    # Headers for detail sheet
+    detail_headers = ['Phòng ban', 'Mã NV', 'Họ tên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Trạng thái']
+    for col, header in enumerate(detail_headers, 1):
+        cell = ws2.cell(row=4, column=col, value=header)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        cell.border = thin_border
+    
+    detail_row = 5
+    
+    for dept in departments:
+        # Get employees in this department
+        employees = Employee.objects.filter(
+            department=dept.name,
+            work_status='WORKING'
+        ).select_related('user').order_by('employee_id')
+        
+        for emp in employees:
+            # Get attendance records for this employee
+            records = AttendanceRecord.objects.filter(
+                employee=emp,
+                date__gte=start_date,
+                date__lte=end_date
+            ).order_by('date')
+            
+            for record in records:
+                # Convert times to Vietnam timezone
+                check_in_str = ''
+                check_out_str = ''
+                if record.check_in_time:
+                    check_in_str = record.check_in_time.astimezone(vietnam_tz).strftime('%H:%M')
+                if record.check_out_time:
+                    check_out_str = record.check_out_time.astimezone(vietnam_tz).strftime('%H:%M')
+                
+                status_display = record.get_status_display()
+                
+                row_data = [
+                    dept.name,
+                    emp.employee_id,
+                    emp.get_full_name(),
+                    record.date.strftime('%d/%m/%Y'),
+                    check_in_str,
+                    check_out_str,
+                    status_display
+                ]
+                
+                for col, value in enumerate(row_data, 1):
+                    cell = ws2.cell(row=detail_row, column=col, value=value)
+                    cell.border = thin_border
+                    if col in [4, 5, 6, 7]:
+                        cell.alignment = Alignment(horizontal="center")
+                    # Apply status color to status column
+                    if col == 7:
+                        status_fill = status_fills.get(record.status)
+                        if status_fill:
+                            cell.fill = status_fill
+                
+                detail_row += 1
+    
+    # Adjust column widths for sheet 2
+    ws2.column_dimensions['A'].width = 20
+    ws2.column_dimensions['B'].width = 12
+    ws2.column_dimensions['C'].width = 25
+    ws2.column_dimensions['D'].width = 14
+    ws2.column_dimensions['E'].width = 10
+    ws2.column_dimensions['F'].width = 10
+    ws2.column_dimensions['G'].width = 15
+    
+    # Save to buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    # Create response
+    filename = f"thong_ke_cham_cong_{start_date.strftime('%Y%m%d')}_{end_date.strftime('%Y%m%d')}.xlsx"
+    response = HttpResponse(
+        buffer.getvalue(),
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
+    return response
+
+
+@csrf_exempt
+def department_employees_attendance_api(request, department_name):
+    """API to get detailed employee attendance for a specific department"""
+    if request.method != 'GET':
+        return error_response('Method not allowed', 405)
+    
+    from datetime import datetime
+    
+    vietnam_now = get_vietnam_now()
+    vietnam_tz = vietnam_now.tzinfo
+    
+    # Get filter parameters
+    start_date_str = request.GET.get('start_date')
+    end_date_str = request.GET.get('end_date')
+    
+    # Default to current month
+    if start_date_str:
+        try:
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            start_date = vietnam_now.date().replace(day=1)
+    else:
+        start_date = vietnam_now.date().replace(day=1)
+    
+    if end_date_str:
+        try:
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            end_date = vietnam_now.date()
+    else:
+        end_date = vietnam_now.date()
+    
+    # URL decode department name
+    from urllib.parse import unquote
+    department_name = unquote(department_name)
+    
+    # Get employees in this department
+    employees = Employee.objects.filter(
+        department=department_name,
+        work_status='WORKING'
+    ).select_related('user')
+    
+    employee_data = []
+    for emp in employees:
+        # Get attendance records for this employee within date range
+        records = AttendanceRecord.objects.filter(
+            employee=emp,
+            date__gte=start_date,
+            date__lte=end_date
+        ).order_by('-date')
+        
+        # Count stats
+        on_time = records.filter(status='ON_TIME').count()
+        late = records.filter(status='LATE').count()
+        early = records.filter(status='EARLY').count()
+        total_records = records.count()
+        on_time_rate = (on_time / total_records * 100) if total_records > 0 else 0
+        
+        # Get attendance history
+        history = []
+        for record in records[:30]:  # Limit to 30 records
+            check_in_vn = None
+            check_out_vn = None
+            if record.check_in_time:
+                check_in_vn = record.check_in_time.astimezone(vietnam_tz).strftime('%H:%M')
+            if record.check_out_time:
+                check_out_vn = record.check_out_time.astimezone(vietnam_tz).strftime('%H:%M')
+            
+            history.append({
+                'date': record.date.isoformat(),
+                'date_display': record.date.strftime('%d/%m/%Y'),
+                'check_in': check_in_vn,
+                'check_out': check_out_vn,
+                'status': record.status,
+                'status_display': record.get_status_display(),
+            })
+        
+        employee_data.append({
+            'employee_id': emp.employee_id,
+            'full_name': emp.get_full_name(),
+            'position': emp.position,
+            'total_records': total_records,
+            'on_time': on_time,
+            'late': late,
+            'early': early,
+            'on_time_rate': round(on_time_rate, 1),
+            'attendance_history': history,
+        })
+    
+    # Sort by late count descending (show employees with most late first)
+    employee_data.sort(key=lambda x: x['late'], reverse=True)
+    
+    return json_response({
+        'success': True,
+        'department': department_name,
+        'employees': employee_data,
+        'filters': {
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+        },
+    })
+
+

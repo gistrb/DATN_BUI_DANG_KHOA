@@ -34,7 +34,7 @@ class EmployeeInline(admin.StackedInline):
 class EmployeeAdmin(admin.ModelAdmin):
     list_display = ('employee_id', 'get_full_name', 'department', 'position', 'work_status', 'current_status', 'is_active', 'face_embeddings_status')
     list_filter = ('work_status', 'current_status', 'department', 'is_active')
-    search_fields = ('employee_id', 'user__first_name', 'user__last_name', 'department')
+    search_fields = ('employee_id', 'first_name', 'last_name', 'department')
     readonly_fields = ('current_status', 'face_embeddings_status')
     actions = ['clear_face_embeddings']
 
@@ -86,7 +86,7 @@ class EmployeeAdmin(admin.ModelAdmin):
     )
 
     def get_full_name(self, obj):
-        return obj.user.get_full_name()
+        return obj.get_full_name()
     get_full_name.short_description = 'Họ và tên'
 
     def save_model(self, request, obj, form, change):
@@ -111,7 +111,7 @@ admin.site.register(User, CustomUserAdmin)
 class AttendanceRecordAdmin(admin.ModelAdmin):
     list_display = ('employee', 'date', 'check_in_time', 'check_out_time', 'status')
     list_filter = ('date', 'status', 'employee__department')
-    search_fields = ('employee__user__first_name', 'employee__user__last_name', 'employee__employee_id')
+    search_fields = ('employee__first_name', 'employee__last_name', 'employee__employee_id')
     date_hierarchy = 'date'
 
 @admin.register(Department)

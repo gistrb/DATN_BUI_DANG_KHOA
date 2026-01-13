@@ -19,6 +19,7 @@ import {
   DepartmentListPage,
   DepartmentDetailPage,
   AccountListPage,
+  DepartmentStatsPage,
 } from './pages/admin';
 
 function App() {
@@ -51,6 +52,9 @@ function App() {
             
             {/* Face Registration */}
             <Route path="register-face" element={<RegisterFace />} />
+            
+            {/* Statistics */}
+            <Route path="statistics" element={<DepartmentStatsPage />} />
           </Route>
           
           {/* Catch all */}
