@@ -1,9 +1,9 @@
 import axios from 'axios';
 
-// Tự động nhận diện hostname để tránh lỗi Cross-site cookie (localhost vs 127.0.0.1)
-const hostname = window.location.hostname;
-const API_URL = `http://${hostname}:8000`; // Backend chạy port 8000
-// Nếu hostname là IP LAN (cho mobile testing), backend cũng phải bind vào 0.0.0.0:8000
+// Production: sử dụng VITE_API_URL từ environment
+// Development: sử dụng hostname động để hỗ trợ localhost và LAN testing
+const API_URL = import.meta.env.VITE_API_URL || 
+  (import.meta.env.DEV ? `http://${window.location.hostname}:8000` : '');
 
 const api = axios.create({
     baseURL: API_URL,
