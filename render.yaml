@@ -5,7 +5,6 @@ databases:
   - name: attendance-db
     plan: free
     databaseName: datn
-    user: postgres
 
 services:
   # Django Backend API
