@@ -1,7 +1,6 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from ..models import Employee
-from ..face_recognition.face_processor import get_face_processor
 from .utils import get_vietnam_now
 import json
 import base64
@@ -10,7 +9,16 @@ import cv2
 import io
 from PIL import Image
 
-face_processor = get_face_processor()
+# Lazy loading - only initialize when actually needed
+_face_processor = None
+
+def get_processor():
+    """Lazy load face processor to avoid memory issues during startup"""
+    global _face_processor
+    if _face_processor is None:
+        from ..face_recognition.face_processor import get_face_processor
+        _face_processor = get_face_processor()
+    return _face_processor
 
 def base64_to_image(base64_string):
     if ',' in base64_string:
@@ -33,7 +41,7 @@ def check_pose(request):
             if image is None:
                 return JsonResponse({'success': False, 'error': 'Invalid image data'}, status=400)
             
-            pose_info = face_processor.detect_pose(image)
+            pose_info = get_processor().detect_pose(image)
             
             if pose_info:
                 return JsonResponse({
@@ -68,12 +76,12 @@ def check_duplicate(request):
             image = base64_to_image(image_data)
             
             # --- Duplicate Check ---
-            embedding = face_processor.get_face_embedding(image)
+            embedding = get_processor().get_face_embedding(image)
             
             if embedding is None:
                 return JsonResponse({'success': False, 'error': 'No face detected'}, status=400)
             
-            existing_face = face_processor.verify_face(embedding)
+            existing_face = get_processor().verify_face(embedding)
             
             if existing_face:
                 return JsonResponse({
@@ -128,7 +136,7 @@ def register_face(request):
             
             for image_data in image_data_list:
                 image = base64_to_image(image_data)
-                embedding = face_processor.get_face_embedding(image)
+                embedding = get_processor().get_face_embedding(image)
                 
                 if embedding is not None:
                     # [TEST] Comment đoạn kiểm tra chất lượng ảnh
@@ -146,7 +154,7 @@ def register_face(request):
                     #         }, status=400)
 
                     if not checked_duplicate:
-                        existing_face = face_processor.verify_face(embedding)
+                        existing_face = get_processor().verify_face(embedding)
                         if existing_face and existing_face['employee_id'] != employee.employee_id:
                             return JsonResponse({
                                 'error': f"Khuôn mặt này đã tồn tại trong hệ thống",

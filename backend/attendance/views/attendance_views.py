@@ -3,12 +3,9 @@ from django.views.decorators.csrf import csrf_exempt
 import json
 import threading
 from ..models import Employee, AttendanceRecord
-from ..face_recognition.face_processor import get_face_processor
 from .utils import get_vietnam_now, is_leaving_early, WORK_START_TIME
-from .face_views import base64_to_image
+from .face_views import base64_to_image, get_processor
 from .push_notification import send_attendance_notification
-
-face_processor = get_face_processor()
 
 
 @csrf_exempt
@@ -23,7 +20,7 @@ def process_attendance(request):
             return JsonResponse({'error': 'No image data'}, status=400)
 
         image = base64_to_image(image_data)
-        result = face_processor.verify_face(image)
+        result = get_processor().verify_face(image)
         
 
         
