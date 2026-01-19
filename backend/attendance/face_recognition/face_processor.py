@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
+# FaceAnalysis is imported lazily inside FaceProcessor.app property
 from typing import Optional, List, Tuple, Union, Dict, Any
 import os
 
@@ -14,19 +14,27 @@ def get_face_processor():
 
 class FaceProcessor:
     def __init__(self):
-        self.app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
-        self.app.prepare(ctx_id=0, det_size=(640, 640))
-
+        # LAZY LOADING: Don't load model here, only when first needed
+        self._app = None  # Will be initialized on first use
+        
         self.similarity_threshold = 0.65
-        
         self.min_face_size = (64, 64)
-        
         self.top_k = 3
-        
         self.cosine_weight = 1.0
         self.l2_weight = 0.0
         
-        print("[FaceProcessor] Initialized with buffalo_s model (det_size=480x480)")
+        print("[FaceProcessor] Instance created (model will load on first use)")
+    
+    @property
+    def app(self):
+        """Lazy load the FaceAnalysis model only when first accessed"""
+        if self._app is None:
+            print("[FaceProcessor] Loading InsightFace model...")
+            from insightface.app import FaceAnalysis
+            self._app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
+            self._app.prepare(ctx_id=0, det_size=(640, 640))
+            print("[FaceProcessor] Model loaded successfully (det_size=640x640)")
+        return self._app
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
         return image
