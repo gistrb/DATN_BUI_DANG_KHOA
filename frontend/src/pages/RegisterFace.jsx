@@ -45,14 +45,14 @@ const RegisterFace = () => {
   const RIGHT_EYE_RIGHT = 263;
 
   const POSE_STAGES = [
-    { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 1, color: '#0d6efd' },
-    { pose: 'left', name: '↪️ Xoay mặt sang trái', required: 1, color: '#198754' },
-    { pose: 'right', name: '↩️ Xoay mặt sang phải', required: 1, color: '#198754' },
-    { pose: 'up', name: '⬆️ Ngẩng đầu lên', required: 1, color: '#fd7e14' },
-    { pose: 'down', name: '⬇️ Cúi đầu xuống', required: 1, color: '#fd7e14' }
+    { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 2, color: '#0d6efd' },
+    { pose: 'left', name: '↪️ Xoay mặt sang trái', required: 2, color: '#198754' },
+    { pose: 'right', name: '↩️ Xoay mặt sang phải', required: 2, color: '#198754' },
+    { pose: 'up', name: '⬆️ Ngẩng đầu lên', required: 2, color: '#fd7e14' },
+    { pose: 'down', name: '⬇️ Cúi đầu xuống', required: 2, color: '#fd7e14' }
   ];
 
-  const TOTAL_REQUIRED = 5; // 5 ảnh chất lượng cao
+  const TOTAL_REQUIRED = 10; // 10 ảnh chất lượng cao
 
   useEffect(() => {
     if (!isAdmin()) {
