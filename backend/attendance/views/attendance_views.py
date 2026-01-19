@@ -40,33 +40,48 @@ def process_attendance(request):
             }, status=400)
 
         now = get_vietnam_now()
-        is_checking_in = employee.current_status in ['NOT_IN', 'OUT_OFFICE']
-
+        
+        # Get or create attendance record for today
         record, created = AttendanceRecord.objects.get_or_create(
             employee=employee,
             date=now.date()
         )
 
         current_time = now.time()
-        status_message = ""
-
-        if is_checking_in:
+        
+        # Check-in: chỉ 1 lần duy nhất trong ngày (lần đầu tiên)
+        # Check-out: có thể nhiều lần (cập nhật check_out_time mới nhất)
+        if not record.check_in_time:
+            # CHECK-IN (lần đầu tiên trong ngày)
             record.check_in_time = now
             if current_time <= WORK_START_TIME:
                 record.status = 'ON_TIME'
-                status_message = "Chấm công vào ca thành công (Đúng giờ)"
             else:
                 record.status = 'LATE'
-                status_message = "Chấm công vào ca thành công (Đi muộn)"
             employee.current_status = 'IN_OFFICE'
+            status_message = "Check-in thành công"
+            is_checking_in = True
         else:
+            # CHECK-OUT (có thể nhiều lần, cập nhật lần cuối)
             record.check_out_time = now
-            if is_leaving_early(now):
+            
+            # Tính lại trạng thái dựa trên check-in và check-out
+            # Nếu đi muộn → luôn là LATE
+            # Nếu đúng giờ + về sớm → EARLY
+            # Nếu đúng giờ + về đúng giờ → ON_TIME
+            if record.check_in_time.time() > WORK_START_TIME:
+                # Đã đi muộn → giữ nguyên LATE
+                record.status = 'LATE'
+            elif is_leaving_early(now):
+                # Đúng giờ nhưng về sớm → EARLY
                 record.status = 'EARLY'
-                status_message = "Chấm công ra ca thành công (Về sớm)"
             else:
-                status_message = "Chấm công ra ca thành công"
+                # Đúng giờ và về đúng giờ → ON_TIME
+                record.status = 'ON_TIME'
+            
             employee.current_status = 'OUT_OFFICE'
+            status_message = "Check-out thành công"
+            is_checking_in = False
 
         record.save()
         employee.save()

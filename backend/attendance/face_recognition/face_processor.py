@@ -14,7 +14,7 @@ def get_face_processor():
 
 class FaceProcessor:
     def __init__(self):
-        self.app = FaceAnalysis(name='buffalo_l', providers=['CPUExecutionProvider'])
+        self.app = FaceAnalysis(name='buffalo_s', providers=['CPUExecutionProvider'])
         self.app.prepare(ctx_id=0, det_size=(640, 640))
 
         self.similarity_threshold = 0.65
@@ -26,7 +26,7 @@ class FaceProcessor:
         self.cosine_weight = 1.0
         self.l2_weight = 0.0
         
-        print("[FaceProcessor] Initialized with buffalo_l model")
+        print("[FaceProcessor] Initialized with buffalo_s model (det_size=480x480)")
 
     def enhance_image(self, image: np.ndarray) -> np.ndarray:
         return image
@@ -128,7 +128,7 @@ class FaceProcessor:
             
             is_bright_enough = 50 < brightness < 220
             is_face_large_enough = face_area > 10000
-            is_sharp_enough = blur_score > 100
+            is_sharp_enough = blur_score > 300
             
             is_valid = is_bright_enough and is_face_large_enough and is_sharp_enough
             
@@ -327,7 +327,14 @@ class FaceProcessor:
                     max_similarity = employee_similarity
                     matched_employee = employee
 
-            print(f"[verify_face] Best match: {matched_employee.employee_id if matched_employee else 'None'}, max_similarity = {max_similarity:.4f}")
+            print(f"\n{'='*60}")
+            print(f"[ACCURACY TEST] Model: buffalo_s | det_size: 480x480")
+            print(f"[ACCURACY TEST] Best match: {matched_employee.get_full_name() if matched_employee else 'None'}")
+            print(f"[ACCURACY TEST] Employee ID: {matched_employee.employee_id if matched_employee else 'N/A'}")
+            print(f"[ACCURACY TEST] Similarity Score: {max_similarity:.4f} ({max_similarity*100:.2f}%)")
+            print(f"[ACCURACY TEST] Threshold: {self.similarity_threshold} ({self.similarity_threshold*100:.0f}%)")
+            print(f"[ACCURACY TEST] Status: {'PASSED ✓' if max_similarity >= self.similarity_threshold else 'FAILED ✗'}")
+            print(f"{'='*60}\n")
             
             if max_similarity >= self.similarity_threshold and matched_employee:
                 result = {

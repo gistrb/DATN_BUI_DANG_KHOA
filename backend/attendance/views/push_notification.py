@@ -85,8 +85,10 @@ def send_attendance_notification(employee, is_check_in, time_str):
     Uses FCM token stored in employee model
     """
     if not employee.expo_push_token:
-        print(f"No push token for employee {employee.employee_id}")
+        print(f"[PUSH] No push token for employee {employee.employee_id}")
         return False
+    
+    print(f"[PUSH] Sending notification to {employee.employee_id}, token: {employee.expo_push_token[:30]}...")
     
     # Extract FCM token from Expo Push Token format
     # ExponentPushToken[xxx] -> we need the actual FCM token
@@ -191,6 +193,8 @@ def register_push_token(request):
             employee = Employee.objects.get(employee_id=employee_id)
             employee.expo_push_token = push_token
             employee.save()
+            
+            print(f"[PUSH] Registered token for {employee_id}: {push_token[:30]}...")
             
             return JsonResponse({
                 'success': True,

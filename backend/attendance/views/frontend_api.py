@@ -30,6 +30,15 @@ def dashboard_api(request):
     if request.method != 'GET':
         return error_response('Method not allowed', 405)
     
+    from django.core.cache import cache
+    
+    # Try to get from cache first (cache stats for 30 seconds)
+    cache_key = 'dashboard_stats_v1'
+    cached_data = cache.get(cache_key)
+    
+    if cached_data:
+        return json_response(cached_data)
+    
     vietnam_now = get_vietnam_now()
     
     # Company statistics
@@ -64,13 +73,18 @@ def dashboard_api(request):
             'has_face': emp.face_embeddings is not None,
         })
     
-    return json_response({
+    response_data = {
         'success': True,
         'company_stats': company_stats,
         'employees': employees,
         'total_departments': Department.objects.count(),
         'current_time': vietnam_now.isoformat(),
-    })
+    }
+    
+    # Cache for 30 seconds
+    cache.set(cache_key, response_data, 30)
+    
+    return json_response(response_data)
 
 
 @csrf_exempt
@@ -528,12 +542,14 @@ def account_detail_api(request, pk):
         try:
             data = json.loads(request.body)
             
-            if 'first_name' in data:
-                user.first_name = data['first_name']
-            if 'last_name' in data:
-                user.last_name = data['last_name']
-            if 'email' in data:
-                user.email = data['email']
+            # Cho phép đổi username
+            if 'username' in data and data['username']:
+                new_username = data['username']
+                # Kiểm tra username mới không trùng với user khác
+                if User.objects.filter(username=new_username).exclude(pk=user.pk).exists():
+                    return error_response(f'Username "{new_username}" đã được sử dụng')
+                user.username = new_username
+            
             if 'is_staff' in data:
                 user.is_staff = data['is_staff']
             if 'is_active' in data:

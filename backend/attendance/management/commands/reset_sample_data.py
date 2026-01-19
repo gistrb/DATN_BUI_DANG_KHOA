@@ -94,6 +94,9 @@ class Command(BaseCommand):
             employee = Employee.objects.create(
                 user=user,
                 employee_id=emp_data["employee_id"],
+                first_name=emp_data["first_name"],
+                last_name=emp_data["last_name"],
+                email=emp_data["email"],
                 department=emp_data["department"],
                 position=emp_data["position"],
                 work_status=emp_data["work_status"],

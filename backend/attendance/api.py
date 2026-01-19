@@ -65,7 +65,8 @@ def login_api(request):
                         'user': {
                             'id': user.id,
                             'username': user.username,
-                            'full_name': user.get_full_name(),
+                            'full_name': employee.get_full_name(),
+                            'email': employee.email or '',
                             'is_staff': user.is_staff,
                             'is_superuser': user.is_superuser,
                             'employee_id': employee.employee_id,
@@ -82,6 +83,7 @@ def login_api(request):
             return JsonResponse({'success': False, 'message': 'Invalid JSON'}, status=400)
     return JsonResponse({'success': False, 'message': 'Method not allowed'}, status=405)
 
+@csrf_exempt
 @safe_json_response
 def employee_stats_api(request, employee_id):
     """API to get employee statistics"""
@@ -129,6 +131,7 @@ def employee_stats_api(request, employee_id):
     except Employee.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'Employee not found'}, status=404)
 
+@csrf_exempt
 @safe_json_response
 def attendance_history_api(request, employee_id):
     """API to get attendance history"""
@@ -164,6 +167,7 @@ def attendance_history_api(request, employee_id):
     except Employee.DoesNotExist:
         return JsonResponse({'success': False, 'message': 'Employee not found'}, status=404)
 
+@csrf_exempt
 def employees_without_face_api(request):
     """API to get all active employees with face registration status"""
     try:

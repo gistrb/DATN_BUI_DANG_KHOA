@@ -131,33 +131,32 @@ def register_face(request):
                 embedding = face_processor.get_face_embedding(image)
                 
                 if embedding is not None:
-                    # [TEST] Comment đoạn kiểm tra chất lượng ảnh
-                    # # Kiểm tra chất lượng ảnh
-                    # # Lấy bbox để tính diện tích khuôn mặt
+                    # [DISABLED] Kiểm tra chất lượng ảnh
                     # faces = face_processor.app.get(image)
                     # if faces:
                     #     bbox = faces[0].bbox
                     #     quality_check = face_processor.check_image_quality(image, bbox)
-                    #     
                     #     if not quality_check['is_valid']:
                     #         return JsonResponse({
                     #             'error': 'Chất lượng ảnh không đạt yêu cầu',
                     #             'details': f"Ảnh thứ {len(embeddings)+1}: {quality_check['message']}"
                     #         }, status=400)
 
-                    if not checked_duplicate:
-                        existing_face = face_processor.verify_face(embedding)
-                        if existing_face and existing_face['employee_id'] != employee.employee_id:
-                            return JsonResponse({
-                                'error': f"Khuôn mặt này đã tồn tại trong hệ thống",
-                                'details': f"Trùng với nhân viên: {existing_face['full_name']} ({existing_face['employee_id']})"
-                            }, status=400)
-                        checked_duplicate = True
+                    # [DISABLED] Kiểm tra trùng lặp
+                    # if not checked_duplicate:
+                    #     existing_face = face_processor.verify_face(embedding)
+                    #     if existing_face and existing_face['employee_id'] != employee.employee_id:
+                    #         return JsonResponse({
+                    #             'error': f"Khuôn mặt này đã tồn tại trong hệ thống",
+                    #             'details': f"Trùng với nhân viên: {existing_face['full_name']} ({existing_face['employee_id']})"
+                    #         }, status=400)
+                    #     checked_duplicate = True
+                    
                     embeddings.append(embedding)
 
-            if len(embeddings) < 5:
+            if len(embeddings) < 10:
                 return JsonResponse({
-                    'error': f'Không đủ mẫu khuôn mặt hợp lệ. Chỉ nhận được {len(embeddings)}/5 mẫu'
+                    'error': f'Không đủ mẫu khuôn mặt hợp lệ. Chỉ nhận được {len(embeddings)}/10 mẫu'
                 }, status=400)
 
             # Lưu embedding
