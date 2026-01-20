@@ -1,8 +1,14 @@
 // API Configuration - reads from Vite environment variables
 const hostname = window.location.hostname;
+const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
 
-// Use environment variable if available, otherwise use dynamic hostname
-export const API_URL = import.meta.env.VITE_API_URL || `http://${hostname}:8000`;
+// Production backend URL on Render (without /api suffix, since api.js adds it)
+const PRODUCTION_API_URL = 'https://attendance-backend-8pnk.onrender.com';
+
+// Use environment variable if available, otherwise:
+// - Use localhost:8000 for local development
+// - Use production URL for deployed frontend
+export const API_URL = import.meta.env.VITE_API_URL || (isLocalhost ? `http://${hostname}:8000` : PRODUCTION_API_URL);
 
 export const APP_CONFIG = {
   appName: import.meta.env.VITE_APP_NAME || 'Face Attendance System',

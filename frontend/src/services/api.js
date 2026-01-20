@@ -1,9 +1,9 @@
 import axios from 'axios';
+import { API_URL } from '../config/config';
 
-// Tự động nhận diện hostname để tránh lỗi Cross-site cookie (localhost vs 127.0.0.1)
-const hostname = window.location.hostname;
-const API_URL = `http://${hostname}:8000`; // Backend chạy port 8000
-// Nếu hostname là IP LAN (cho mobile testing), backend cũng phải bind vào 0.0.0.0:8000
+// API_URL is imported from config which automatically handles:
+// - localhost development: http://localhost:8000
+// - production (Render): https://attendance-backend-8pnk.onrender.com
 
 const api = axios.create({
     baseURL: API_URL,
