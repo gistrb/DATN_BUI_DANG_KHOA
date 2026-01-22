@@ -1,0 +1,21 @@
+# ===================================
+# Docker Compose - Backend Only (VPS)
+# Database & Frontend are on Render
+# ===================================
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: doantn_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend_static:/app/staticfiles
+
+volumes:
+  backend_static:

@@ -20,20 +20,10 @@ Hướng dẫn này giúp bạn triển khai ứng dụng lên VPS (Ubuntu/Debia
 - RAM tối thiểu: 2GB (khuyến nghị 4GB vì InsightFace cần nhiều RAM)
 - Mở port: 80 (HTTP), 443 (HTTPS), và 22 (SSH)
 
-### Kết nối SSH vào VPS
-
-```bash
-ssh root@YOUR_VPS_IP
-# Hoặc nếu dùng user khác:
-ssh ubuntu@YOUR_VPS_IP
-```
-
 ### Cập nhật hệ thống
 
-```bash
+````bash
 sudo apt update && sudo apt upgrade -y
-```
-
 ---
 
 ## 2. Cài Đặt Docker
@@ -59,7 +49,7 @@ sudo usermod -aG docker $USER
 
 # Áp dụng thay đổi (cần logout/login lại hoặc chạy lệnh sau)
 newgrp docker
-```
+````
 
 ### Kiểm tra Docker đã cài thành công
 
@@ -72,18 +62,15 @@ docker compose version
 
 ## 3. Clone Mã Nguồn
 
-```bash
+````bash
 # Di chuyển vào thư mục home (hoặc nơi bạn muốn đặt code)
 cd ~
 
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/DOANTN.git
+git clone https://github.com/gistrb/DATN_BUI_DANG_KHOA.git
 
 # Vào thư mục dự án
-cd DOANTN
-```
-
-> **Lưu ý:** Thay `YOUR_USERNAME/DOANTN` bằng URL repository thực tế của bạn.
+cd DATN_BUI_DANG_KHOA
 
 ---
 
@@ -93,7 +80,7 @@ Tạo file `.env` ở thư mục gốc của dự án:
 
 ```bash
 nano .env
-```
+````
 
 Thêm nội dung sau (thay đổi các giá trị cho phù hợp):
 
@@ -105,12 +92,12 @@ DB_PASSWORD=YOUR_SECURE_PASSWORD_HERE
 
 # Django
 SECRET_KEY=your-very-long-and-random-secret-key-here
-ALLOWED_HOSTS=your-domain.com,YOUR_VPS_IP
+ALLOWED_HOSTS=
 DEBUG=False
 
 # CORS & CSRF (thay bằng domain/IP thực tế)
-CORS_ALLOWED_ORIGINS=http://your-domain.com,http://YOUR_VPS_IP
-CSRF_TRUSTED_ORIGINS=http://your-domain.com,http://YOUR_VPS_IP
+CORS_ALLOWED_ORIGINS=
+CSRF_TRUSTED_ORIGINS=
 
 # Frontend API URL (để frontend gọi API qua Nginx proxy)
 VITE_API_URL=/api
@@ -155,9 +142,9 @@ docker compose exec backend python manage.py createsuperuser
 
 ### Truy cập ứng dụng
 
-- **Frontend:** `http://YOUR_VPS_IP`
-- **API:** `http://YOUR_VPS_IP/api/`
-- **Admin Django:** `http://YOUR_VPS_IP/admin/`
+- **Frontend:** `http://`
+- **API:** `http://api`
+- **Admin Django:** `http://admin`
 
 ---
 
