@@ -30,7 +30,7 @@ const Navbar = ({ onToggleSidebar }) => {
         )}
 
         <Link className="navbar-brand" to={user?.is_staff ? "/admin/dashboard" : "/"}>
-          Hệ thống chấm công
+          <img src="/logo.png" alt="Logo" height="40" className="d-inline-block align-text-top me-2" />
         </Link>
 
         <button

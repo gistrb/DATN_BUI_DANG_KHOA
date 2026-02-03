@@ -99,7 +99,13 @@ class Employee(models.Model):
 
     def set_face_embeddings(self, embedding_arrays):
         """Lưu list của các embedding"""
-        embeddings_list = [emb.tolist() for emb in embedding_arrays]
+        # Handle both numpy arrays and plain lists from frontend
+        embeddings_list = []
+        for emb in embedding_arrays:
+            if hasattr(emb, 'tolist'):  # numpy array
+                embeddings_list.append(emb.tolist())
+            else:  # already a list
+                embeddings_list.append(emb)
         self.face_embeddings = json.dumps(embeddings_list)
 
     def get_face_embeddings(self):

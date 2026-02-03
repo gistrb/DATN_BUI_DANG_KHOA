@@ -66,6 +66,9 @@ if DEBUG:
         r"^http://127\.0\.0\.1(:[0-9]+)?$",
         r"^http://192\.168\.[0-9]{1,3}\.[0-9]{1,3}(:[0-9]+)?$",
     ]
+    # Allow session cookies for cross-origin requests in development
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_SAMESITE = 'Lax'
 
 ROOT_URLCONF = "config.urls"
 

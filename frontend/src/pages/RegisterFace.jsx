@@ -2,10 +2,11 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks';
-import { registerFace, deleteFace } from '../services/api';
+import { deleteFace } from '../services/api';
 import api from '../services/api';
 import Swal from 'sweetalert2';
 import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { getFaceEmbedding, calculatePose, loadModels } from '../services/faceEmbedding';
 
 const RegisterFace = () => {
   const webcamRef = useRef(null);
@@ -46,13 +47,43 @@ const RegisterFace = () => {
 
   const POSE_STAGES = [
     { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 1, color: '#0d6efd' },
-    { pose: 'left', name: '↪️ Xoay mặt sang trái', required: 1, color: '#198754' },
-    { pose: 'right', name: '↩️ Xoay mặt sang phải', required: 1, color: '#198754' },
-    { pose: 'up', name: '⬆️ Ngẩng đầu lên', required: 1, color: '#fd7e14' },
-    { pose: 'down', name: '⬇️ Cúi đầu xuống', required: 1, color: '#fd7e14' }
+    { pose: 'left', name: ' Xoay mặt sang trái', required: 1, color: '#198754' },
+    { pose: 'right', name: ' Xoay mặt sang phải', required: 1, color: '#198754' },
+    { pose: 'up', name: 'Ngẩng đầu lên', required: 1, color: '#fd7e14' },
+    { pose: 'down', name: ' Cúi đầu xuống', required: 1, color: '#fd7e14' }
   ];
 
   const TOTAL_REQUIRED = 5; // 5 ảnh chất lượng cao
+
+  // Helper to map calculated pose to stage pose string
+  // calculatePose returns { yaw, pitch, roll } in degrees
+  // Note: Observed baseline pitch is ~40° when looking straight
+  const detectPoseType = (yaw, pitch) => {
+      // Calibrated thresholds based on observed values
+      // Baseline pitch appears to be around 40° when looking straight
+      const PITCH_BASELINE = 40;
+      const adjustedPitch = pitch - PITCH_BASELINE;
+      
+      const YAW_THRESH = 20;    // For left/right detection
+      const PITCH_THRESH = 15;  // For up/down detection
+      
+      console.log(`[Pose] Yaw: ${yaw.toFixed(1)}° Pitch: ${pitch.toFixed(1)}° (adjusted: ${adjustedPitch.toFixed(1)}°)`);
+
+      // Check for left/right first (yaw)
+      if (yaw > YAW_THRESH) return 'right';
+      if (yaw < -YAW_THRESH) return 'left';
+      
+      // Then check for up/down (adjusted pitch)
+      if (adjustedPitch > PITCH_THRESH) return 'down';
+      if (adjustedPitch < -PITCH_THRESH) return 'up';
+      
+      // Default to front if within thresholds
+      if (Math.abs(yaw) < YAW_THRESH && Math.abs(adjustedPitch) < PITCH_THRESH) {
+          return 'front';
+      }
+      
+      return 'front'; // Fallback
+  };
 
   useEffect(() => {
     if (!isAdmin()) {
@@ -72,12 +103,13 @@ const RegisterFace = () => {
 
   useEffect(() => {
     fetchEmployees();
+    loadModels().catch(console.error); // Load TFLite models
   }, []);
 
   const stateRef = useRef({
     stageIndex: 0,
     stageCaptures: 0,
-    totalCaptures: [],
+    totalCaptures: [], // Embeddings now
     duplicateChecked: false,
     isRunning: false
   });
@@ -142,7 +174,7 @@ const RegisterFace = () => {
         const rightEAR = calculateEAR(landmarks, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT);
         const avgEAR = (leftEAR + rightEAR) / 2;
 
-        console.log(`[Liveness] EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current}`);
+        // console.log(`[Liveness] EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current}`);
 
         if (avgEAR < EAR_THRESHOLD) {
           eyeClosedRef.current = true;
@@ -252,84 +284,104 @@ const RegisterFace = () => {
         return;
       }
 
-      const imageSrc = webcamRef.current?.getScreenshot();
-
-      if (imageSrc) {
+      // Instead of getting screenshot, we work with video for landmarks
+      const video = webcamRef.current?.video;
+      
+      if (video && video.readyState === 4 && faceLandmarkerRef.current) {
         try {
-          const poseResponse = await api.post('/check-pose/', {
-            image: imageSrc
-          });
+             // 1. Get Landmarks Locally
+             const results = faceLandmarkerRef.current.detectForVideo(video, performance.now());
+             
+             if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+                 const landmarks = results.faceLandmarks[0];
+                 const { yaw, pitch } = calculatePose(landmarks);
+                 
+                 const currentStage = POSE_STAGES[stageIndex];
+                 
+                 // Determine pose
+                 let detectedPose = 'front';
+                 // Map yaw/pitch to 'front', 'left', 'right', 'up', 'down'
+                 // Logic: 
+                 // Yaw < -15 => Left (assuming self-view mirror: move head left -> nose moves left -> negative x diff? depends on calc)
+                 // Let's rely on visual feedback loop or standard assumptions.
+                 // In calculatePose: yaw = (nose.x - eyesCenter.x) ...
+                 // If I look Left (turn head left), my nose moves left on the screen (if mirrored).
+                 // nose.x decreases. eyesCenter also shifts.
+                 // Actually, let's use the explicit logic from before or just generic logic:
+                 
+                 // Calibration check: 
+                 // Yaw +ve = Right, -ve = Left?
+                 // Pitch +ve = Down, -ve = Up?
+                 detectedPose = detectPoseType(yaw, pitch);
 
-          const poseData = poseResponse.data;
+                 if (detectedPose === currentStage.pose) {
+                      // 2. Extract Embedding with Face Alignment
+                      const embedding = await getFaceEmbedding(video, landmarks);
+                      
+                      stateRef.current.totalCaptures.push(embedding);
+                      stateRef.current.stageCaptures++;
 
-          if (poseData.success) {
-            const currentStage = POSE_STAGES[stageIndex];
-            const detectedPose = poseData.pose_type;
+                      const newStageCaptures = stateRef.current.stageCaptures;
+                      setAllCaptures(prev => [...prev, {}]); // Just update length for UI
+                      setCurrentStageCaptures(newStageCaptures);
+                      setPoseFeedback(`✅ Đúng! (${newStageCaptures}/${currentStage.required})`);
+                      
+                      if (newStageCaptures >= currentStage.required) {
+                           // Duplicate Check on first capture (FRONT)
+                           if (currentStage.pose === 'front' && !stateRef.current.duplicateChecked) {
+                               stateRef.current.duplicateChecked = true;
+                               setPoseFeedback('🔍 Đang kiểm tra trùng lặp...');
+                               
+                               try {
+                                   const checkResponse = await api.post('/check-duplicate/', {
+                                       embedding: embedding
+                                   });
+                                   
+                                   if (checkResponse.data.success && checkResponse.data.is_duplicate) {
+                                       stateRef.current.isRunning = false;
+                                       setIsCapturing(false);
+                                       setMessage({
+                                           type: 'danger',
+                                           text: `Khuôn mặt đã tồn tại! Trùng với: ${checkResponse.data.employee_name} (${checkResponse.data.employee_id})`
+                                       });
+                                       return;
+                                   }
+                                   setPoseFeedback('✅ Không trùng - tiếp tục!');
+                               } catch (error) {
+                                    console.error('Error checking duplicate:', error);
+                                    stateRef.current.isRunning = false;
+                                    setIsCapturing(false);
+                                    setMessage({
+                                      type: 'danger',
+                                      text: error.response?.data?.message || 'Lỗi kiểm tra hợp lệ'
+                                    });
+                                    return;
+                               }
+                           }
+                           
+                           stateRef.current.stageIndex++;
+                           stateRef.current.stageCaptures = 0;
+                           setCurrentStageIndex(stateRef.current.stageIndex);
+                           setCurrentStageCaptures(0);
+                           
+                           await new Promise(resolve => setTimeout(resolve, 1000));
+                      }
+                 } else {
+                      setPoseFeedback(`❌ Cần: ${currentStage.name}`);
+                 }
+             } else {
+                 setPoseFeedback('❌ Không phát hiện khuôn mặt');
+             }
 
-            if (detectedPose === currentStage.pose) {
-              stateRef.current.totalCaptures.push(imageSrc);
-              stateRef.current.stageCaptures++;
-
-              const newStageCaptures = stateRef.current.stageCaptures;
-
-              setAllCaptures([...stateRef.current.totalCaptures]);
-              setCurrentStageCaptures(newStageCaptures);
-              setPoseFeedback(`✅ Đúng! (${newStageCaptures}/${currentStage.required})`);
-
-              if (newStageCaptures >= currentStage.required) {
-                if (currentStage.pose === 'front' && !stateRef.current.duplicateChecked) {
-                  stateRef.current.duplicateChecked = true;
-                  setPoseFeedback('🔍 Đang kiểm tra trùng lặp...');
-
-                  try {
-                    const checkResponse = await api.post('/check-duplicate/', {
-                      image: imageSrc
-                    });
-
-                    if (checkResponse.data.success && checkResponse.data.is_duplicate) {
-                      stateRef.current.isRunning = false;
-                      setIsCapturing(false);
-                      setMessage({
-                        type: 'danger',
-                        text: `Khuôn mặt đã tồn tại! Trùng với: ${checkResponse.data.employee_name} (${checkResponse.data.employee_id})`
-                      });
-                      return;
-                    }
-
-                    setPoseFeedback('✅ Không trùng - tiếp tục!');
-                  } catch (error) {
-                    console.error('Error checking duplicate:', error);
-                    stateRef.current.isRunning = false;
-                    setIsCapturing(false);
-                    setMessage({
-                      type: 'danger',
-                      text: error.response?.data?.message || error.response?.data?.error || 'Lỗi kiểm tra hợp lệ'
-                    });
-                    return;
-                  }
-                }
-
-                stateRef.current.stageIndex++;
-                stateRef.current.stageCaptures = 0;
-
-                setCurrentStageIndex(stateRef.current.stageIndex);
-                setCurrentStageCaptures(0);
-
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-            } else {
-              setPoseFeedback(`❌ Cần: ${currentStage.name}`);
-            }
-          } else {
-            setPoseFeedback('❌ Không phát hiện khuôn mặt');
-          }
         } catch (error) {
-          console.error('Error checking pose:', error);
-          setPoseFeedback('❌ Lỗi kiểm tra tư thế');
+          console.error('Error processing frame:', error);
+          setPoseFeedback('❌ Lỗi xử lý');
         }
       }
 
       if (stateRef.current.isRunning) {
+        // Slow down slightly to allow TFLite inference to breathe?
+        // 500ms is safe.
         setTimeout(processFrame, 500);
       }
     };
@@ -339,16 +391,21 @@ const RegisterFace = () => {
 
 
 
-  const handleRegisterWithCaptures = async (captures) => {
+  const handleRegisterWithCaptures = async (embeddings) => {
     setLoading(true);
     setMessage({ type: 'info', text: 'Đang xử lý...' });
 
     try {
-      const data = await registerFace(selectedEmployee, captures);
-      if (data.success) {
+      // Send embeddings instead of images
+      const data = await api.post('/register-face/', {
+          employee_id: selectedEmployee,
+          embeddings: embeddings
+      });
+      
+      if (data.data.success) {
         Swal.fire({
           title: 'Thành công!',
-          text: `Đăng ký thành công cho ${data.employee.name}!`,
+          text: `Đăng ký thành công cho ${data.data.employee.name}!`,
           icon: 'success',
           timer: 2000,
           showConfirmButton: false
@@ -358,7 +415,7 @@ const RegisterFace = () => {
         setMessage(null);
         fetchEmployees(); // Refresh list to update status
       } else {
-        setMessage({ type: 'danger', text: data.error || 'Đăng ký thất bại' });
+        setMessage({ type: 'danger', text: data.data.error || 'Đăng ký thất bại' });
       }
     } catch (error) {
       console.error('FAILED TO REGISTER:', error);
@@ -477,8 +534,6 @@ const RegisterFace = () => {
                       )}
                       Xóa dữ liệu khuôn mặt
                     </button>
-                    
-                    {/* Optional: Allow re-register immediately? Maybe better to force delete first for safety */}
                   </div>
                 </div>
               ) : (

@@ -1,9 +1,8 @@
 import axios from 'axios';
 
 // Production: sử dụng VITE_API_URL từ environment
-// Development: sử dụng hostname động để hỗ trợ localhost và LAN testing
-const API_URL = import.meta.env.VITE_API_URL || 
-  (import.meta.env.DEV ? `http://${window.location.hostname}:8000` : '');
+// Development: để trống để dùng Vite proxy
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 const api = axios.create({
     baseURL: API_URL,
@@ -41,13 +40,13 @@ export const getHistory = async (employeeId) => {
 };
 
 // Face API calls
-export const processAttendance = async (imageData) => {
-    const response = await api.post('/process-attendance/', { image: imageData });
+export const processAttendance = async (embedding) => {
+    const response = await api.post('/process-attendance/', { embedding: embedding });
     return response.data;
 };
 
-export const registerFace = async (employeeId, images) => {
-    const response = await api.post('/register-face/', { employee_id: employeeId, images });
+export const registerFace = async (employeeId, embeddings) => {
+    const response = await api.post('/register-face/', { employee_id: employeeId, embeddings });
     return response.data;
 };
 

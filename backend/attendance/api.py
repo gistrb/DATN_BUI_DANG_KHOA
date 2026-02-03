@@ -187,3 +187,102 @@ def employees_without_face_api(request):
         })
     except Exception as e:
         return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+@csrf_exempt
+def register_account_api(request):
+    """
+    API for mobile app account registration with face verification.
+    Validates: employee_id, email (must match), and face embedding.
+    """
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'message': 'Method not allowed'}, status=405)
+    
+    try:
+        data = json.loads(request.body)
+        employee_id = data.get('employee_id')
+        username = data.get('username')
+        password = data.get('password')
+        email = data.get('email')
+        embedding = data.get('embedding')  # Optional now
+        
+        # Validate required fields
+        if not all([employee_id, username, password, email]):
+            return JsonResponse({
+                'success': False,
+                'message': 'Vui lòng điền đầy đủ thông tin'
+            }, status=400)
+        
+        # 1. Check if employee exists
+        try:
+            employee = Employee.objects.get(employee_id=employee_id)
+        except Employee.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'message': 'Mã nhân viên không tồn tại trong hệ thống'
+            }, status=404)
+        
+        # 2. Check if employee already has a user account
+        if employee.user is not None:
+            return JsonResponse({
+                'success': False,
+                'message': 'Nhân viên này đã có tài khoản'
+            }, status=400)
+        
+        # 3. Check if email matches employee's email
+        if employee.email and employee.email.lower() != email.lower():
+            return JsonResponse({
+                'success': False,
+                'message': 'Email không khớp với thông tin nhân viên'
+            }, status=400)
+        
+
+        from django.contrib.auth.models import User
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({
+                'success': False,
+                'message': 'Tên đăng nhập đã tồn tại'
+            }, status=400)
+        
+        # 7. Create user account
+        user = User.objects.create_user(
+            username=username,
+            password=password,
+            email=email,
+            first_name=employee.first_name,
+            last_name=employee.last_name
+        )
+        
+        # 8. Link user to employee
+        employee.user = user
+        employee.save()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Đăng ký tài khoản thành công!',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'full_name': employee.get_full_name(),
+                'employee_id': employee.employee_id,
+                'department': employee.department
+            },
+            'employee': {
+                'employee_id': employee.employee_id,
+                'full_name': employee.get_full_name(),
+                'department': employee.department,
+                'email': employee.email,
+                'position': getattr(employee, 'position', 'Nhân viên'),
+            }
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'message': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        print(f"[REGISTER] Error: {str(e)}")
+        traceback.print_exc()
+        return JsonResponse({
+            'success': False,
+            'message': f'Lỗi hệ thống: {str(e)}'
+        }, status=500)
+
+

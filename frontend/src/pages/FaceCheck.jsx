@@ -3,6 +3,7 @@ import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
 import { FaceDetector, FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { processAttendance } from '../services/api';
+import { getFaceEmbedding, loadModels } from '../services/faceEmbedding';
 
 const FaceCheck = () => {
   const webcamRef = useRef(null);
@@ -94,6 +95,10 @@ const FaceCheck = () => {
 
         faceDetectorRef.current = detector;
         faceLandmarkerRef.current = landmarker;
+
+        // Load TFLite Model for embedding
+        await loadModels();
+
         setModelLoaded(true);
         setStatus('Đưa khuôn mặt vào khung');
       } catch (error) {
@@ -181,7 +186,7 @@ const FaceCheck = () => {
         const avgEAR = (leftEAR + rightEAR) / 2;
 
         // Debug logs
-        console.log(`EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current} | Threshold: ${EAR_THRESHOLD}`);
+        // console.log(`EAR: ${avgEAR.toFixed(3)} | Closed: ${eyeClosedRef.current} | Threshold: ${EAR_THRESHOLD}`);
 
         // Detect blink: eye closed (EAR < threshold) then opened (EAR > threshold)
         if (avgEAR < EAR_THRESHOLD) {
@@ -201,7 +206,7 @@ const FaceCheck = () => {
     } catch (error) {
       console.error('Blink detection error:', error);
     }
-  }, [calculateEAR]);
+  }, [calculateEAR, EAR_THRESHOLD, EAR_OPEN_THRESHOLD, LEFT_EYE_TOP, LEFT_EYE_BOTTOM, LEFT_EYE_LEFT, LEFT_EYE_RIGHT, RIGHT_EYE_TOP, RIGHT_EYE_BOTTOM, RIGHT_EYE_LEFT, RIGHT_EYE_RIGHT]);
 
   useEffect(() => {
     if (!modelLoaded) return;
@@ -245,7 +250,7 @@ const FaceCheck = () => {
                   if (!inOval) {
                     setCountdown(0);
                     setBlinkPhase('waiting');
-                    blinkDetectedRef.current = false;
+                    setBlinkDetected(false); // Fix ref usage
                     eyeClosedRef.current = false;
                   }
                 } else {
@@ -253,7 +258,7 @@ const FaceCheck = () => {
                   setFaceInOval(false);
                   setCountdown(0);
                   setBlinkPhase('waiting');
-                  blinkDetectedRef.current = false;
+                  setBlinkDetected(false);
                   eyeClosedRef.current = false;
                 }
               } else {
@@ -261,7 +266,7 @@ const FaceCheck = () => {
                 setFaceInOval(false);
                 setCountdown(0);
                 setBlinkPhase('waiting');
-                blinkDetectedRef.current = false;
+                setBlinkDetected(false);
                 eyeClosedRef.current = false;
               }
             } catch (error) {
@@ -366,8 +371,22 @@ const FaceCheck = () => {
     setStatus('Đang xử lý chấm công...');
     
     try {
-      const imageSrc = webcamRef.current.getScreenshot();
-      const data = await processAttendance(imageSrc);
+      // Extract Embedding with Face Alignment
+      const video = webcamRef.current?.video;
+      if (!video) throw new Error("Camera error");
+
+      // Get landmarks for face alignment
+      let landmarks = null;
+      if (faceLandmarkerRef.current && video.readyState === 4) {
+        const result = faceLandmarkerRef.current.detectForVideo(video, performance.now());
+        if (result.faceLandmarks && result.faceLandmarks.length > 0) {
+          landmarks = result.faceLandmarks[0];
+        }
+      }
+
+      const embedding = await getFaceEmbedding(video, landmarks);
+      
+      const data = await processAttendance(embedding);
       
       if (data.success) {
         setResult({
@@ -383,9 +402,10 @@ const FaceCheck = () => {
         });
       }
     } catch (error) {
+      console.error(error);
       setResult({
         success: false,
-        message: error.error || 'Đã xảy ra lỗi khi chấm công'
+        message: error.response?.data?.error || error.message || 'Đã xảy ra lỗi khi chấm công'
       });
     } finally {
       setLoading(false);
@@ -446,6 +466,11 @@ const FaceCheck = () => {
           width: '100%',
           height: '100%',
           objectFit: 'contain'
+        }}
+        videoConstraints={{
+            facingMode: 'user',
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
         }}
       />
 

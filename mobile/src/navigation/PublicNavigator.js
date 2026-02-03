@@ -1,15 +1,17 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Text } from 'react-native';
 import LoginScreen from '../screens/auth/LoginScreen';
+import RegisterScreen from '../screens/auth/RegisterScreen';
 import PublicNotificationsScreen from '../screens/public/PublicNotificationsScreen';
-import RegulationsScreen from '../screens/public/RegulationsScreen';
 import AboutScreen from '../screens/public/AboutScreen';
 import { COLORS } from '../styles/theme';
 
 const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
 
-const PublicNavigator = () => {
+const PublicTabs = () => {
   return (
     <Tab.Navigator
       screenOptions={{
@@ -51,16 +53,6 @@ const PublicNavigator = () => {
         }}
       />
       <Tab.Screen
-        name="Regulations"
-        component={RegulationsScreen}
-        options={{
-          tabBarLabel: 'Quy định',
-          tabBarIcon: ({ color }) => (
-            <Text style={{ fontSize: 20 }}>📋</Text>
-          ),
-        }}
-      />
-      <Tab.Screen
         name="About"
         component={AboutScreen}
         options={{
@@ -74,4 +66,14 @@ const PublicNavigator = () => {
   );
 };
 
+const PublicNavigator = () => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="PublicTabs" component={PublicTabs} />
+      <Stack.Screen name="Register" component={RegisterScreen} />
+    </Stack.Navigator>
+  );
+};
+
 export default PublicNavigator;
+

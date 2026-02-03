@@ -79,8 +79,10 @@ const Login = () => {
           <div className="col-md-6 col-lg-4">
             <div className="card shadow">
               <div className="card-header bg-primary text-white">
+                <div className="text-center mb-2">
+                  <img src="/logo.png" alt="Logo" height="60" />
+                </div>
                 <h4 className="mb-0">
-                  <i className="bi bi-person-lock me-2"></i>
                   Đăng nhập
                 </h4>
               </div>

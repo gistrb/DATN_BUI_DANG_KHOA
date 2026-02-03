@@ -38,23 +38,7 @@ const PublicNotificationsScreen = () => {
           </View>
         </View>
 
-        {/* Work Days Card */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>📅 Lịch làm việc</Text>
-          <Text style={styles.description}>
-            Công ty làm việc từ Thứ Hai đến Thứ Bảy. Chủ nhật nghỉ.
-          </Text>
-          <View style={styles.daysContainer}>
-            {['T2', 'T3', 'T4', 'T5', 'T6', 'T7'].map((day) => (
-              <View key={day} style={styles.dayBadge}>
-                <Text style={styles.dayText}>{day}</Text>
-              </View>
-            ))}
-            <View style={[styles.dayBadge, styles.dayOff]}>
-              <Text style={[styles.dayText, styles.dayOffText]}>CN</Text>
-            </View>
-          </View>
-        </View>
+
 
         {/* Note */}
         <View style={styles.noteCard}>

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, TouchableOpacity, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Button, Input } from '../../components/common';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS, SPACING, FONT_SIZES } from '../../styles/theme';
 
-const LoginScreen = () => {
+const LoginScreen = ({ navigation }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const { handleLogin, loading } = useAuth();
@@ -21,6 +21,13 @@ const LoginScreen = () => {
     >
       <StatusBar style="auto" />
       <View style={styles.loginBox}>
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('../../../assets/icon.png')} 
+            style={styles.logo} 
+            resizeMode="contain"
+          />
+        </View>
         <Text style={styles.title}>Chào mừng</Text>
         <Text style={styles.subtitle}>Đăng nhập để tiếp tục</Text>
         
@@ -43,6 +50,15 @@ const LoginScreen = () => {
           onPress={onLogin}
           loading={loading}
         />
+
+        <TouchableOpacity 
+          style={styles.registerLink}
+          onPress={() => navigation.navigate('Register')}
+        >
+          <Text style={styles.registerLinkText}>
+            Chưa có tài khoản? <Text style={styles.registerLinkBold}>Đăng ký</Text>
+          </Text>
+        </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
   );
@@ -65,11 +81,31 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
     color: COLORS.text,
   },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  logo: {
+    width: 100,
+    height: 100,
+  },
   subtitle: {
     fontSize: FONT_SIZES.md,
     textAlign: 'center',
     marginBottom: SPACING.xxxl,
     color: COLORS.textSecondary,
+  },
+  registerLink: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
+  },
+  registerLinkText: {
+    fontSize: FONT_SIZES.sm,
+    color: COLORS.textSecondary,
+  },
+  registerLinkBold: {
+    color: COLORS.primary,
+    fontWeight: 'bold',
   },
 });
 

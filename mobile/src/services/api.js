@@ -8,7 +8,7 @@ import { API_URL, DEFAULT_HEADERS } from '../config/config';
  */
 export const login = async (username, password) => {
   try {
-    const response = await fetch(`${API_URL}/login/`, {
+    const response = await fetch(`${API_URL}/api/login/`, {
       method: 'POST',
       headers: DEFAULT_HEADERS,
       body: JSON.stringify({ username, password }),
@@ -37,7 +37,7 @@ export const login = async (username, password) => {
  */
 export const fetchStats = async (employeeId) => {
   try {
-    const response = await fetch(`${API_URL}/stats/${employeeId}/`, {
+    const response = await fetch(`${API_URL}/api/stats/${employeeId}/`, {
       headers: DEFAULT_HEADERS,
     });
     const responseText = await response.text();
@@ -62,7 +62,7 @@ export const fetchStats = async (employeeId) => {
  */
 export const fetchHistory = async (employeeId) => {
   try {
-    const response = await fetch(`${API_URL}/history/${employeeId}/`, {
+    const response = await fetch(`${API_URL}/api/history/${employeeId}/`, {
       headers: DEFAULT_HEADERS,
     });
     const responseText = await response.text();
@@ -105,7 +105,7 @@ export const fetchEmployeeData = async (employeeId) => {
  */
 export const registerPushToken = async (pushToken, employeeId) => {
   try {
-    const response = await fetch(`${API_URL}/push-token/`, {
+    const response = await fetch(`${API_URL}/api/push-token/`, {
       method: 'POST',
       headers: DEFAULT_HEADERS,
       body: JSON.stringify({
@@ -121,6 +121,47 @@ export const registerPushToken = async (pushToken, employeeId) => {
     };
   } catch (error) {
     console.error('Error registering push token:', error);
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+};
+
+/**
+ * Register new account with face verification
+ * @param {Object} params - Registration parameters
+ * @param {string} params.employee_id - Employee ID
+ * @param {string} params.username - Desired username
+ * @param {string} params.password - Password
+ * @param {string} params.email - Email address
+ * @param {Array<number>} params.embedding - Face embedding for verification
+ * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+ */
+export const registerAccount = async ({ employee_id, username, password, email, embedding }) => {
+  try {
+    const response = await fetch(`${API_URL}/api/register-account/`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({
+        employee_id,
+        username,
+        password,
+        email,
+        embedding,
+      }),
+    });
+
+    const data = await response.json();
+
+    return {
+      success: data.success,
+      data: data,
+      error: data.message,
+      statusCode: response.status,
+    };
+  } catch (error) {
+    console.error('Error registering account:', error);
     return {
       success: false,
       error: error.message,

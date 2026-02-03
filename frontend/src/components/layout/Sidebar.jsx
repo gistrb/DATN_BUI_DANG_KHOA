@@ -63,8 +63,8 @@ const Sidebar = ({ show, onClose }) => {
       {/* Sidebar */}
       <div className={`admin-sidebar ${show ? 'show' : ''}`}>
         <div className="p-3">
-          <h5 className="text-white mb-0">
-            <i className="bi bi-gear-fill me-2"></i>
+          <h5 className="text-white mb-0 d-flex align-items-center">
+            <img src="/logo.png" alt="Logo" height="30" className="me-2" />
             Admin Panel
           </h5>
         </div>

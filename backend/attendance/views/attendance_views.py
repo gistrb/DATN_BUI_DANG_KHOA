@@ -4,7 +4,7 @@ import json
 import threading
 from ..models import Employee, AttendanceRecord
 from .utils import get_vietnam_now, is_leaving_early, WORK_START_TIME
-from .face_views import base64_to_image, get_processor
+from .face_views import find_matching_employee
 from .push_notification import send_attendance_notification
 
 
@@ -15,25 +15,28 @@ def process_attendance(request):
 
     try:
         data = json.loads(request.body)
-        image_data = data.get('image')
-        if not image_data:
-            return JsonResponse({'error': 'No image data'}, status=400)
-
-        image = base64_to_image(image_data)
-        result = get_processor().verify_face(image)
+        embedding = data.get('embedding')
         
+        if not embedding:
+            return JsonResponse({'error': 'No embedding data provided'}, status=400)
 
+        # Verify face using embedding
+        employee, score = find_matching_employee(embedding)
         
-        if result is None:
+        # Log similarity score for debugging
+        if employee:
+            print(f"[ATTENDANCE] Match found: {employee.get_full_name()} | Similarity: {score:.4f}")
+        else:
+            print(f"[ATTENDANCE] No match found | Best score: {score:.4f}")
+        
+        if not employee:
             return JsonResponse({
                 'error': 'Không nhận diện được nhân viên hoặc nhân viên không trong trạng thái làm việc'
             }, status=400)
 
-        employee = Employee.objects.get(employee_id=result['employee_id'])
-
         if employee.work_status != 'WORKING':
             return JsonResponse({
-                'error': f"Nhân viên {result['full_name']} ({result['work_status']}) không trong trạng thái làm việc"
+                'error': f"Nhân viên {employee.get_full_name()} ({employee.work_status}) không trong trạng thái làm việc"
             }, status=400)
 
         now = get_vietnam_now()
@@ -80,13 +83,12 @@ def process_attendance(request):
             'success': True,
             'message': status_message,
             'employee': {
-                'id': result['employee_id'],
-                'name': result['full_name'],
-                'department': result['department'],
-                'position': result['position'],
-                'similarity': f"{result['similarity_score']:.2%}",
+                'id': employee.employee_id,
+                'name': employee.get_full_name(),
+                'department': employee.department,
+                'position': employee.position,
+                'similarity': f"{score:.2%}",
                 'current_status': employee.get_current_status_display(),
-                'bbox': result.get('bbox')
             },
             'attendance': {
                 'date': now.strftime('%d/%m/%Y'),

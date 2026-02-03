@@ -13,6 +13,8 @@ urlpatterns = [
     
     # Mobile App APIs
     path('api/login/', api.login_api, name='api_login'),
+    path('api/register-account/', api.register_account_api, name='api_register_account'),
+
     path('api/stats/<str:employee_id>/', api.employee_stats_api, name='api_stats'),
     path('api/history/<str:employee_id>/', api.attendance_history_api, name='api_history'),
     path('api/employees/', api.employees_without_face_api, name='api_employees'),
