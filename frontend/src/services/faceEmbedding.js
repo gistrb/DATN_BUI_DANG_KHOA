@@ -1,38 +1,28 @@
-// Use tf and tflite from CDN (loaded in index.html)
-// This ensures both libraries use the same Tensor class
+// Use ONNX Runtime from CDN (loaded in index.html)
+// Face alignment and pose calculation remain unchanged
 
-let tfliteModel = null;
+let onnxSession = null;
 
 /**
- * Loads the MobileFaceNet TFLite model
+ * Loads the MobileFaceNet ONNX model
  */
 export const loadModels = async () => {
     try {
-        // Wait for tf and tflite to be loaded from CDN
-        if (!window.tf) {
-            throw new Error('TensorFlow.js library not loaded. Check index.html script tag.');
-        }
-        if (!window.tflite) {
-            throw new Error('TFLite library not loaded. Check index.html script tag.');
+        // Wait for ort to be loaded from CDN
+        if (!window.ort) {
+            throw new Error('ONNX Runtime library not loaded. Check index.html script tag.');
         }
 
-        const tf = window.tf;
-        const tflite = window.tflite;
+        const ort = window.ort;
 
-        // Wait for tf to be ready
-        await tf.ready();
-        console.log("TensorFlow.js ready. Backend:", tf.getBackend());
-
-        // Load MobileFaceNet model
-        if (!tfliteModel) {
-            // Configure TFLite WASM path
-            tflite.setWasmPath('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.8/dist/');
-            tfliteModel = await tflite.loadTFLiteModel('/models/mobilefacenet.tflite');
-            console.log("MobileFaceNet model loaded successfully");
+        // Load ONNX model
+        if (!onnxSession) {
+            onnxSession = await ort.InferenceSession.create('/models/mobilefacenet_insightface.onnx');
+            console.log("MobileFaceNet ONNX model loaded successfully");
         }
-        return tfliteModel;
+        return onnxSession;
     } catch (error) {
-        console.error("Failed to load MobileFaceNet model:", error);
+        console.error("Failed to load MobileFaceNet ONNX model:", error);
         throw error;
     }
 };
@@ -156,14 +146,14 @@ export const alignFace = (imageElement, landmarks, outputSize = 112) => {
 };
 
 /**
- * Extracts face embedding from image with face alignment
+ * Extracts face embedding from image with face alignment using ONNX Runtime
  * @param {HTMLVideoElement|HTMLImageElement} imageElement 
  * @param {Object[]} landmarks - Optional MediaPipe landmarks for alignment
  */
 export const getFaceEmbedding = async (imageElement, landmarks = null) => {
-    if (!tfliteModel) await loadModels();
+    if (!onnxSession) await loadModels();
 
-    const tf = window.tf;
+    const ort = window.ort;
     
     if (!imageElement) throw new Error("No image element provided");
 
@@ -176,39 +166,53 @@ export const getFaceEmbedding = async (imageElement, landmarks = null) => {
         console.log("[Embedding] No landmarks provided, using raw image");
     }
 
-    // Manually manage tensor disposal
-    let inputTensor = null;
-    let resized = null;
-    let normalized = null;
-    let batched = null;
-    let outputTensor = null;
+    // Create a temporary canvas to extract image data
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = 112;
+    canvas.height = 112;
+    
+    // Draw the source (aligned or raw) to canvas
+    ctx.drawImage(sourceElement, 0, 0, 112, 112);
+    
+    // Get image data
+    const imageData = ctx.getImageData(0, 0, 112, 112);
+    const pixels = imageData.data; // RGBA format
+
+    // Prepare input tensor in CHW format (channels first)
+    // ONNX model expects: [batch, channels, height, width] = [1, 3, 112, 112]
+    const inputTensor = new Float32Array(1 * 3 * 112 * 112);
+    
+    // Convert RGBA to RGB and normalize: (value - 127.5) / 128.0
+    // Also convert from HWC (height, width, channels) to CHW (channels, height, width)
+    for (let i = 0; i < 112; i++) {
+        for (let j = 0; j < 112; j++) {
+            const pixelIndex = (i * 112 + j) * 4; // RGBA has 4 channels
+            
+            // Red channel
+            inputTensor[0 * 112 * 112 + i * 112 + j] = (pixels[pixelIndex] - 127.5) / 128.0;
+            // Green channel
+            inputTensor[1 * 112 * 112 + i * 112 + j] = (pixels[pixelIndex + 1] - 127.5) / 128.0;
+            // Blue channel
+            inputTensor[2 * 112 * 112 + i * 112 + j] = (pixels[pixelIndex + 2] - 127.5) / 128.0;
+        }
+    }
 
     try {
-        // 1. Convert image to tensor
-        inputTensor = tf.browser.fromPixels(sourceElement);
+        // Create ONNX tensor
+        const tensor = new ort.Tensor('float32', inputTensor, [1, 3, 112, 112]);
         
-        // 2. Resize to 112x112 (in case alignment canvas is different size)
-        resized = tf.image.resizeBilinear(inputTensor, [112, 112]);
+        // Run inference
+        const feeds = { 'input.1': tensor };
+        const results = await onnxSession.run(feeds);
         
-        // 3. Normalize (img - 127.5) / 128
-        normalized = resized.sub(127.5).div(128.0);
-        
-        // 4. Expand dims to [1, 112, 112, 3]
-        batched = normalized.expandDims(0);
-        
-        // 5. Run inference
-        outputTensor = tfliteModel.predict(batched);
-        
-        // 6. Get embedding data BEFORE disposing
-        const embedding = outputTensor.dataSync();
+        // Get output tensor (should be named '516' based on model inspection)
+        const outputTensor = results['516'];
+        const embedding = outputTensor.data;
         
         return Array.from(embedding);
-    } finally {
-        // Clean up all tensors
-        if (inputTensor) inputTensor.dispose();
-        if (resized) resized.dispose();
-        if (normalized) normalized.dispose();
-        if (batched) batched.dispose();
-        if (outputTensor) outputTensor.dispose();
+    } catch (error) {
+        console.error("[getFaceEmbedding] Error during inference:", error);
+        throw error;
     }
 };
