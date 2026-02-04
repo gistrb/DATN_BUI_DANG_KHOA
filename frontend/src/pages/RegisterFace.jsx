@@ -208,7 +208,18 @@ const RegisterFace = () => {
     setMessage({ type: 'info', text: '👁️ Hãy chớp mắt để xác nhận người thật' });
     setPoseFeedback('Nhìn vào camera và chớp mắt một lần');
 
+    const startTime = Date.now();
+    const LIVENESS_TIMEOUT = 7000; // 7 giây timeout
+
     const checkLiveness = () => {
+      // Check timeout
+      if (Date.now() - startTime > LIVENESS_TIMEOUT) {
+        setLivenessPhase('idle');
+        setMessage({ type: 'warning', text: '⏰ Hết thời gian! Vui lòng thử lại và chớp mắt trong 15 giây.' });
+        setPoseFeedback('');
+        return;
+      }
+
       const video = webcamRef.current?.video;
       if (video && video.readyState === 4) {
         const detected = detectBlink(video);
