@@ -132,10 +132,15 @@ if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     
-    # Session and CSRF cookie settings for cross-origin requests (IMPORTANT!)
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'True') == 'True'
-    CSRF_COOKIE_SECURE = os.environ.get('CSRF_COOKIE_SECURE', 'True') == 'True'
+    # Session and CSRF cookie settings for cross-origin requests
+    SESSION_COOKIE_SECURE = True  # Required for HTTPS
+    CSRF_COOKIE_SECURE = True     # Required for HTTPS
     
-    # SameSite settings for cross-origin (CRITICAL for frontend on different domain)
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
-    CSRF_COOKIE_SAMESITE = os.environ.get('CSRF_COOKIE_SAMESITE', 'Lax')
+    # SameSite=None is REQUIRED for cross-origin cookies (frontend on different domain)
+    SESSION_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_SAMESITE = 'None'
+    
+    # Log cookie settings on startup
+    print(f"[SETTINGS] SESSION_COOKIE_SAMESITE={SESSION_COOKIE_SAMESITE}")
+    print(f"[SETTINGS] CSRF_COOKIE_SAMESITE={CSRF_COOKIE_SAMESITE}")
+    print(f"[SETTINGS] CORS_ALLOWED_ORIGINS={CORS_ALLOWED_ORIGINS}")
