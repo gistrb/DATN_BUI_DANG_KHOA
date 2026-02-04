@@ -4,6 +4,9 @@ from ..models import Employee
 from .utils import get_vietnam_now
 import json
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Helper to compute cosine similarity
 def compute_similarity(embedding1, embedding2):
@@ -84,10 +87,19 @@ def check_duplicate(request):
 
 @csrf_exempt
 def register_face(request):
+    logger.info(f"[register_face] Request from {request.META.get('REMOTE_ADDR')}")
+    logger.info(f"[register_face] User: {request.user}")
+    logger.info(f"[register_face] Is authenticated: {request.user.is_authenticated}")
+    logger.info(f"[register_face] Is staff: {request.user.is_staff if request.user.is_authenticated else 'N/A'}")
+    logger.info(f"[register_face] Session key: {request.session.session_key}")
+    logger.info(f"[register_face] Cookies: {list(request.COOKIES.keys())}")
+    
     if not request.user.is_authenticated:
+        logger.warning("[register_face] Authentication required - user not authenticated")
         return JsonResponse({'error': 'Authentication required'}, status=401)
     
     if not request.user.is_staff:
+        logger.warning(f"[register_face] Permission denied - user {request.user.username} is not staff")
         return JsonResponse({'error': 'Permission denied'}, status=403)
 
     if request.method == 'GET':
@@ -103,6 +115,9 @@ def register_face(request):
             data = json.loads(request.body)
             employee_id = data.get('employee_id')
             embeddings = data.get('embeddings', []) # Expecting list of embeddings
+            
+            logger.info(f"[register_face] Employee ID: {employee_id}")
+            logger.info(f"[register_face] Embeddings count: {len(embeddings)}")
             
             # Legacy support if frontend sends 'images' - though we prefer embeddings
             if not embeddings and 'images' in data:
@@ -132,8 +147,10 @@ def register_face(request):
 
             # Save embeddings
             # Ensure they are stored as list of lists
+            logger.info(f"[register_face] Saving {len(embeddings)} embeddings for {employee.employee_id}")
             employee.set_face_embeddings(embeddings)
             employee.save()
+            logger.info(f"[register_face] Successfully saved embeddings for {employee.employee_id}")
 
             now = get_vietnam_now()
             return JsonResponse({
@@ -150,11 +167,13 @@ def register_face(request):
             })
 
         except Employee.DoesNotExist:
+            logger.error(f"[register_face] Employee not found: {employee_id}")
             return JsonResponse({
                 'error': 'Không tìm thấy nhân viên',
                 'details': 'Vui lòng kiểm tra lại mã nhân viên'
             }, status=404)
         except Exception as e:
+            logger.error(f"[register_face] Error: {str(e)}", exc_info=True)
             return JsonResponse({
                 'error': 'Lỗi khi xử lý đăng ký',
                 'details': str(e)
@@ -163,7 +182,21 @@ def register_face(request):
 @csrf_exempt
 def delete_face(request):
     """API để xóa dữ liệu khuôn mặt"""
-    if not request.user.is_authenticated or not request.user.is_staff:
+    logger.info(f"[delete_face] Request from {request.META.get('REMOTE_ADDR')}")
+    logger.info(f"[delete_face] Method: {request.method}")
+    logger.info(f"[delete_face] User: {request.user}")
+    logger.info(f"[delete_face] Is authenticated: {request.user.is_authenticated}")
+    logger.info(f"[delete_face] Is staff: {request.user.is_staff if request.user.is_authenticated else 'N/A'}")
+    logger.info(f"[delete_face] Session key: {request.session.session_key}")
+    logger.info(f"[delete_face] Cookies: {list(request.COOKIES.keys())}")
+    logger.info(f"[delete_face] Headers: {dict(request.headers)}")
+    
+    if not request.user.is_authenticated:
+        logger.warning("[delete_face] Authentication required - user not authenticated")
+        return JsonResponse({'error': 'Authentication required'}, status=401)
+    
+    if not request.user.is_staff:
+        logger.warning(f"[delete_face] Permission denied - user {request.user.username} is not staff")
         return JsonResponse({'error': 'Permission denied'}, status=403)
         
     if request.method == 'POST':
@@ -171,15 +204,23 @@ def delete_face(request):
             data = json.loads(request.body)
             employee_id = data.get('employee_id')
             
+            logger.info(f"[delete_face] Request data: {data}")
+            logger.info(f"[delete_face] Employee ID: {employee_id}")
+            
             if not employee_id:
+                logger.warning("[delete_face] Missing employee_id in request")
                 return JsonResponse({'error': 'Missing employee_id'}, status=400)
                 
             employee = Employee.objects.get(employee_id=employee_id)
+            logger.info(f"[delete_face] Found employee: {employee.get_full_name()}")
             
             if not employee.face_embeddings:
+                logger.warning(f"[delete_face] Employee {employee_id} has no face embeddings")
                 return JsonResponse({'error': 'Nhân viên chưa đăng ký khuôn mặt'}, status=400)
                 
+            logger.info(f"[delete_face] Clearing face embeddings for {employee_id}")
             employee.clear_face_embeddings()
+            logger.info(f"[delete_face] Successfully cleared embeddings for {employee_id}")
             
             return JsonResponse({
                 'success': True,
@@ -187,10 +228,13 @@ def delete_face(request):
             })
             
         except Employee.DoesNotExist:
+            logger.error(f"[delete_face] Employee not found: {employee_id}")
             return JsonResponse({'error': 'Không tìm thấy nhân viên'}, status=404)
         except Exception as e:
+            logger.error(f"[delete_face] Error: {str(e)}", exc_info=True)
             return JsonResponse({'error': str(e)}, status=500)
-            
+    
+    logger.warning(f"[delete_face] Method not allowed: {request.method}")
     return JsonResponse({'error': 'Method not allowed'}, status=405)
     
 @csrf_exempt
