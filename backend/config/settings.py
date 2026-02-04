@@ -50,7 +50,7 @@ MIDDLEWARE = [
 
 # CORS Configuration
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for testing
 
 # Production CORS from environment
 CORS_ALLOWED_ORIGINS = [
