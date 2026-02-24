@@ -1,0 +1,48 @@
+@startuml
+hide footbox
+actor "Admin" as Admin
+boundary "EmployeeFormPage.jsx" as FormUI
+control "employee_detail_api" as API
+entity "NhanVien" as DB
+entity "TaiKhoan" as Acc
+
+Admin -> Admin: Nhấn nút "Sửa"
+Admin -> FormUI: Điền thông tin mới
+activate FormUI
+
+Admin -> FormUI: Click "Lưu thay đổi"
+FormUI -> API: PUT /api/employees/{id}/detail/
+activate API
+
+API -> API: Validate dữ liệu
+
+alt Dữ liệu hợp lệ
+    API -> DB: Cập nhật thông tin nhân viên
+    activate DB
+    
+    alt Status = "Đã nghỉ việc" (TERMINATED)
+        DB -> DB: update work_status = TERMINATED
+        DB -> DB: update is_active = False
+        DB -> Acc: Vô hiệu hóa tài khoản liên kết (nếu có)
+        activate Acc
+        Acc --> DB: Success
+        deactivate Acc
+    else Status khác
+        DB -> DB: update fields...
+    end
+    
+    DB -> DB: Save()
+    DB --> API: Success
+    deactivate DB
+    
+    API --> FormUI: {success: true}
+    FormUI --> Admin: Thông báo "Lưu thành công"
+else Lỗi
+    API --> FormUI: {error: "Lỗi validation"}
+    FormUI --> Admin: Hiển thị lỗi
+end
+
+deactivate API
+deactivate FormUI
+
+@enduml

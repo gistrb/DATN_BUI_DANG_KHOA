@@ -40,7 +40,6 @@ def process_attendance(request):
             }, status=400)
 
         now = get_vietnam_now()
-        is_checking_in = employee.current_status in ['NOT_IN', 'OUT_OFFICE']
 
         record, created = AttendanceRecord.objects.get_or_create(
             employee=employee,
@@ -50,7 +49,11 @@ def process_attendance(request):
         current_time = now.time()
         status_message = ""
 
-        if is_checking_in:
+        # Lần quét đầu tiên trong ngày = vào ca, tất cả lần sau = ra ca
+        is_first_scan = record.check_in_time is None
+
+        if is_first_scan:
+            # Lần đầu tiên: Vào ca
             record.check_in_time = now
             if current_time <= WORK_START_TIME:
                 record.status = 'ON_TIME'
@@ -60,6 +63,7 @@ def process_attendance(request):
                 status_message = "Chấm công vào ca thành công (Đi muộn)"
             employee.current_status = 'IN_OFFICE'
         else:
+            # Tất cả lần sau: Ra ca (cập nhật giờ ra ca mới nhất)
             record.check_out_time = now
             if is_leaving_early(now):
                 record.status = 'EARLY'
@@ -75,7 +79,7 @@ def process_attendance(request):
         time_str = now.strftime('%H:%M')
         threading.Thread(
             target=send_attendance_notification,
-            args=(employee, is_checking_in, time_str),
+            args=(employee, is_first_scan, time_str),
             daemon=True
         ).start()
 
@@ -85,8 +89,8 @@ def process_attendance(request):
             'employee': {
                 'id': employee.employee_id,
                 'name': employee.get_full_name(),
-                'department': employee.department,
-                'position': employee.position,
+                'department': str(employee.department) if employee.department else '',
+                'position': str(employee.position) if employee.position else '',
                 'similarity': f"{score:.2%}",
                 'current_status': employee.get_current_status_display(),
             },

@@ -1,0 +1,39 @@
+@startuml
+hide footbox
+actor "Admin" as Admin
+boundary "AccountListPage.jsx" as ListUI
+control "account_detail_api" as API
+entity "TaiKhoan" as Acc
+entity "NhanVien" as Emp
+
+Admin -> ListUI: Click nút "Xóa"
+activate ListUI
+ListUI --> Admin: Hộp thoại xác nhận?
+
+Admin -> ListUI: Đồng ý
+ListUI -> API: DELETE /api/accounts/{id}/detail/
+activate API
+
+alt Thành công
+    API -> Emp: Unlink Employee (set user=NULL)
+    activate Emp
+    Emp --> API: Success
+    deactivate Emp
+
+    API -> Acc: Delete User
+    activate Acc
+    Acc --> API: Success
+    deactivate Acc
+    
+    API --> ListUI: {success: true}
+    ListUI --> ListUI: Reload danh sách
+    ListUI --> Admin: Cập nhật bảng
+else Lỗi
+    API --> ListUI: {error: "..."}
+    ListUI --> Admin: Hiển thị lỗi
+end
+
+deactivate API
+deactivate ListUI
+
+@enduml

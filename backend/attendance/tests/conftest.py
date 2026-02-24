@@ -23,7 +23,7 @@ def department(db):
 def employee(db, user, department):
     return Employee.objects.create(
         user=user, employee_id='NV001', first_name='Khoa', last_name='Bùi',
-        email='khoa@example.com', department=department.name, position='Developer', work_status='WORKING')
+        email='khoa@example.com', department=department, position='Developer', work_status='WORKING')
 
 
 @pytest.fixture

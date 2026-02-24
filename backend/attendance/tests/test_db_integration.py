@@ -34,18 +34,21 @@ class TestDatabaseIntegration:
     
     def test_filter_employees_by_department(self, db):
         dept = Department.objects.create(name='Query Test Dept')
-        Employee.objects.create(employee_id='NV_Q1', department=dept.name)
-        Employee.objects.create(employee_id='NV_Q2', department=dept.name)
-        Employee.objects.create(employee_id='NV_Q3', department='Other')
-        result = Employee.objects.filter(department=dept.name)
+        other_dept = Department.objects.create(name='Other')
+        Employee.objects.create(employee_id='NV_Q1', department=dept)
+        Employee.objects.create(employee_id='NV_Q2', department=dept)
+        Employee.objects.create(employee_id='NV_Q3', department=other_dept)
+        result = Employee.objects.filter(department=dept)
         assert result.count() == 2
     
     def test_filter_attendance_by_date_range(self, db):
         emp = Employee.objects.create(employee_id='NV_DATE_RANGE')
         today = timezone.now().date()
         for i in range(5):
-            AttendanceRecord.objects.create(
-                employee=emp, date=today - timezone.timedelta(days=i+600), status='ON_TIME')
+            rec = AttendanceRecord.objects.create(
+                employee=emp, status='ON_TIME')
+            AttendanceRecord.objects.filter(pk=rec.pk).update(date=today - timezone.timedelta(days=i+600))
+            
         start = today - timezone.timedelta(days=603)
         end = today - timezone.timedelta(days=600)
         result = AttendanceRecord.objects.filter(employee=emp, date__range=[start, end])
@@ -54,8 +57,10 @@ class TestDatabaseIntegration:
     def test_aggregate_attendance_count(self, db):
         emp = Employee.objects.create(employee_id='NV_AGG')
         for i in range(3):
-            AttendanceRecord.objects.create(
-                employee=emp, date=timezone.now().date() - timezone.timedelta(days=i+700), status='ON_TIME')
+            rec = AttendanceRecord.objects.create(
+                employee=emp, status='ON_TIME')
+            AttendanceRecord.objects.filter(pk=rec.pk).update(date=timezone.now().date() - timezone.timedelta(days=i+700))
+            
         result = Employee.objects.filter(employee_id='NV_AGG').annotate(record_count=Count('attendancerecord')).first()
         assert result.record_count == 3
     

@@ -66,10 +66,11 @@ def login_api(request):
                             'id': user.id,
                             'username': user.username,
                             'full_name': user.get_full_name(),
+                            'email': employee.email or user.email or '',
                             'is_staff': user.is_staff,
                             'is_superuser': user.is_superuser,
                             'employee_id': employee.employee_id,
-                            'department': employee.department,
+                            'department': employee.department.name if employee.department else None,
                             'position': employee.position,
                             'avatar': employee.face_embeddings is not None # Check if face registered
                         }
@@ -176,7 +177,7 @@ def employees_without_face_api(request):
             employee_list.append({
                 'employee_id': emp.employee_id,
                 'full_name': emp.get_full_name(),
-                'department': emp.department,
+                'department': emp.department.name if emp.department else None,
                 'position': emp.position,
                 'has_face': bool(emp.face_embeddings)
             })
@@ -264,12 +265,12 @@ def register_account_api(request):
                 'username': user.username,
                 'full_name': employee.get_full_name(),
                 'employee_id': employee.employee_id,
-                'department': employee.department
+                'department': employee.department.name if employee.department else None
             },
             'employee': {
                 'employee_id': employee.employee_id,
                 'full_name': employee.get_full_name(),
-                'department': employee.department,
+                'department': employee.department.name if employee.department else None,
                 'email': employee.email,
                 'position': getattr(employee, 'position', 'Nhân viên'),
             }

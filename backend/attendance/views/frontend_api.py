@@ -57,7 +57,7 @@ def dashboard_api(request):
         employees.append({
             'employee_id': emp.employee_id,
             'full_name': emp.get_full_name(),
-            'department': emp.department,
+            'department': emp.department.name if emp.department else None,
             'position': emp.position,
             'work_status': emp.work_status,
             'current_status': emp.current_status,
@@ -77,15 +77,15 @@ def dashboard_api(request):
 def employees_api(request):
     """API to list/create employees"""
     if request.method == 'GET':
-        employees = Employee.objects.select_related('user').all()
+        employees = Employee.objects.select_related('user', 'department').all()
         
         # Apply filters
-        department = request.GET.get('department')
+        department_filter = request.GET.get('department')
         status = request.GET.get('status')
         search = request.GET.get('search', '')
         
-        if department:
-            employees = employees.filter(department=department)
+        if department_filter:
+            employees = employees.filter(department__name=department_filter)
         if status:
             employees = employees.filter(work_status=status)
         if search:
@@ -103,7 +103,7 @@ def employees_api(request):
                 'employee_id': emp.employee_id,
                 'full_name': emp.get_full_name(),
                 'email': emp.email or '',
-                'department': emp.department,
+                'department': emp.department.name if emp.department else None,
                 'position': emp.position,
                 'work_status': emp.work_status,
                 'work_status_display': emp.get_work_status_display(),
@@ -156,13 +156,19 @@ def employees_api(request):
             
             # Create employee without user account
             # User/account can be created separately via account management
+            # Lookup department by name if provided
+            dept = None
+            dept_name = data.get('department')
+            if dept_name:
+                dept = Department.objects.filter(name=dept_name).first()
+            
             employee = Employee.objects.create(
                 user=None,
                 employee_id=employee_id,
                 first_name=data.get('first_name', ''),
                 last_name=data.get('last_name', ''),
                 email=data.get('email', ''),
-                department=data.get('department', ''),
+                department=dept,
                 position=data.get('position', ''),
                 work_status=data.get('work_status', 'WORKING'),
             )
@@ -223,7 +229,7 @@ def employee_detail_api(request, employee_id):
                 'first_name': employee.first_name,
                 'last_name': employee.last_name,
                 'email': employee.email or '',
-                'department': employee.department,
+                'department': employee.department.name if employee.department else None,
                 'position': employee.position,
                 'work_status': employee.work_status,
                 'work_status_display': employee.get_work_status_display(),
@@ -254,7 +260,12 @@ def employee_detail_api(request, employee_id):
             
             # Update employee
             if 'department' in data:
-                employee.department = data['department']
+                dept_name = data['department']
+                if dept_name:
+                    dept = Department.objects.filter(name=dept_name).first()
+                    employee.department = dept
+                else:
+                    employee.department = None
             if 'position' in data:
                 employee.position = data['position']
             if 'work_status' in data:
@@ -292,8 +303,8 @@ def departments_api(request):
         
         data = []
         for dept in departments:
-            # Count employees by department name (since Employee.department is CharField)
-            employee_count = Employee.objects.filter(department=dept.name).count()
+            # Count employees using ForeignKey relationship
+            employee_count = dept.employees.count()
             data.append({
                 'id': dept.id,
                 'name': dept.name,
@@ -337,14 +348,12 @@ def department_detail_api(request, pk):
     except Department.DoesNotExist:
         return error_response('Department not found', 404)
     
-    # Count employees by department name
-    employee_count = Employee.objects.filter(department=department.name).count()
+    # Count employees using ForeignKey relationship
+    employee_count = department.employees.count()
     
     if request.method == 'GET':
         # Get employees in this department
-        employees = Employee.objects.filter(
-            department=department.name
-        ).select_related('user')
+        employees = department.employees.select_related('user')
         
         emp_data = []
         for emp in employees:
@@ -437,7 +446,7 @@ def accounts_api(request):
                 'first_name': emp.first_name,
                 'last_name': emp.last_name,
                 'email': emp.email or '',
-                'department': emp.department,
+                'department': emp.department.name if emp.department else None,
                 'position': emp.position,
             })
         
@@ -618,12 +627,12 @@ def department_stats_api(request):
     
     for dept in departments:
         # Get employees in this department
-        employees = Employee.objects.filter(department=dept.name, work_status='WORKING')
+        employees = Employee.objects.filter(department=dept, work_status='WORKING')
         employee_count = employees.count()
         
         # Get attendance records for this department within date range
         records = AttendanceRecord.objects.filter(
-            employee__department=dept.name,
+            employee__department=dept,
             date__gte=start_date,
             date__lte=end_date
         )
@@ -767,11 +776,11 @@ def export_department_stats_excel(request):
     
     row = 5
     for idx, dept in enumerate(departments, 1):
-        employees = Employee.objects.filter(department=dept.name, work_status='WORKING')
+        employees = Employee.objects.filter(department=dept, work_status='WORKING')
         employee_count = employees.count()
         
         records = AttendanceRecord.objects.filter(
-            employee__department=dept.name,
+            employee__department=dept,
             date__gte=start_date,
             date__lte=end_date
         )
@@ -827,7 +836,7 @@ def export_department_stats_excel(request):
     for dept in departments:
         # Get employees in this department
         employees = Employee.objects.filter(
-            department=dept.name,
+            department=dept,
             work_status='WORKING'
         ).select_related('user').order_by('employee_id')
         
@@ -935,8 +944,14 @@ def department_employees_attendance_api(request, department_name):
     department_name = unquote(department_name)
     
     # Get employees in this department
+    # Look up department by name
+    try:
+        dept_obj = Department.objects.get(name=department_name)
+    except Department.DoesNotExist:
+        return error_response(f'Department "{department_name}" not found', 404)
+    
     employees = Employee.objects.filter(
-        department=department_name,
+        department=dept_obj,
         work_status='WORKING'
     ).select_related('user')
     

@@ -1,0 +1,74 @@
+@startuml
+hide footbox
+actor "Admin" as Admin
+boundary "RegisterFace.jsx" as UI
+control "MediaPipe" as MP
+control "ONNX Runtime" as ONNX
+control "register_face" as API
+entity "NhanVien" as DB
+
+Admin -> UI: Chọn nhân viên & Bắt đầu đăng ký
+activate UI
+
+UI -> MP: Tải FaceLandmarker
+UI -> Admin: Hãy chớp mắt! (7 giây)
+
+loop Blink Detection
+    UI -> MP: detectForVideo()
+    MP --> UI: Face landmarks
+    UI -> UI: Tính EAR
+end
+
+alt Chớp mắt thành công
+    UI --> Admin: Xác nhận thành công!
+    
+    loop 5 Hướng (Thẳng, Trái, Phải, Lên, Xuống)
+        Admin -> UI: Đưa mặt vào khung hình
+        UI -> MP: detectForVideo()
+        MP --> UI: Face landmarks/blendshapes
+        UI -> UI: Check Pose (Yaw, Pitch, Roll)
+        
+        alt Đúng hướng yêu cầu
+             UI -> ONNX: getFaceEmbedding(video, landmarks)
+             ONNX --> UI: embedding [512 float]
+             
+             UI -> API: check_duplicate(embedding)
+             activate API
+             API -> DB: Tìm khuôn mặt trùng
+             activate DB
+             DB --> API: Kết quả (Duplicate?)
+             deactivate DB
+             API --> UI: OK/Warning
+             deactivate API
+             
+             UI --> Admin: Đã chụp xong hướng X
+        else Sai hướng
+             UI --> Admin: Vui lòng quay mặt đúng hướng
+        end
+    end
+    
+    UI -> API: POST /register-face/ {embeddings: [5 embeddings]}
+    activate API
+    
+    API -> DB: Lấy thông tin nhân viên
+    activate DB
+    DB --> API: Nhân viên
+    deactivate DB
+    
+    alt Nhân viên đã có khuôn mặt
+        API --> UI: Lỗi: Nhân viên đã đăng ký
+    else Hợp lệ
+        API -> DB: set_face_embeddings()
+        API -> DB: Save()
+        API --> UI: {success: true}
+        UI --> Admin: Thông báo "Đăng ký thành công"
+    end
+    
+    deactivate API
+
+else Hết thời gian chớp mắt
+    UI --> Admin: Hết thời gian! Thử lại
+end
+deactivate UI
+
+@enduml

@@ -8,24 +8,24 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Helper to compute cosine similarity
+# Helper to compute cosine similarity with L2-normalization
 def compute_similarity(embedding1, embedding2):
-    # Setup for verification
-    # embedding1: list or np array
-    # embedding2: list or np array
-    vec1 = np.array(embedding1)
-    vec2 = np.array(embedding2)
+    vec1 = np.array(embedding1, dtype=np.float64)
+    vec2 = np.array(embedding2, dtype=np.float64)
     
-    # Compute Cosine Similarity
+    # L2-normalize both vectors for proper cosine similarity
     norm1 = np.linalg.norm(vec1)
     norm2 = np.linalg.norm(vec2)
     
     if norm1 == 0 or norm2 == 0:
         return 0.0
+    
+    vec1 = vec1 / norm1
+    vec2 = vec2 / norm2
         
-    return np.dot(vec1, vec2) / (norm1 * norm2)
+    return float(np.dot(vec1, vec2))
 
-def find_matching_employee(input_embedding, threshold=0.75): # Increased for aligned faces
+def find_matching_employee(input_embedding, threshold=0.7):
     employees = Employee.objects.filter(is_active=True, face_embeddings__isnull=False)
     
     # Debug: Log embedding dimensions
@@ -159,8 +159,8 @@ def register_face(request):
                 'employee': {
                     'id': employee.employee_id,
                     'name': employee.get_full_name(),
-                    'department': employee.department if hasattr(employee, 'department') else '',
-                    'position': employee.position if hasattr(employee, 'position') else '',
+                    'department': str(employee.department) if hasattr(employee, 'department') and employee.department else '',
+                    'position': str(employee.position) if hasattr(employee, 'position') and employee.position else '',
                 },
                 'samples_count': len(embeddings),
                 'timestamp': now.strftime('%d/%m/%Y %H:%M:%S')

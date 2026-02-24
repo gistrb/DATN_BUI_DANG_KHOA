@@ -136,7 +136,7 @@ class TestEmployee:
     
     def test_default_values(self, db):
         emp = Employee.objects.create(employee_id='NV200')
-        assert emp.department == 'Chưa phân công'
+        assert emp.department is None  # ForeignKey default is None
         assert emp.position == 'Nhân viên'
         assert emp.work_status == 'WORKING'
         assert emp.current_status == 'NOT_IN'

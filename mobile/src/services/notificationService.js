@@ -11,9 +11,11 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Work start time configuration (8:30 AM)
+// Work time configuration (8:00 AM - 5:00 PM)
 const WORK_START_HOUR = 8;
-const WORK_START_MINUTE = 30;
+const WORK_START_MINUTE = 0;
+const WORK_END_HOUR = 17;
+const WORK_END_MINUTE = 0;
 const REMINDER_MINUTES_BEFORE = 15;
 
 /**
@@ -106,7 +108,9 @@ export const registerForPushNotifications = async () => {
 };
 
 /**
- * Schedule daily reminder notification at 8:15 AM (15 minutes before work starts)
+ * Schedule daily reminder notifications:
+ * - 7:45 AM: Reminder to check-in (15 min before work starts at 8:00)
+ * - 4:45 PM: Reminder to check-out (15 min before work ends at 17:00)
  * Excludes Sunday (day 1 in JS)
  */
 export const scheduleDailyReminder = async () => {
@@ -114,30 +118,56 @@ export const scheduleDailyReminder = async () => {
     // Cancel existing scheduled notifications first
     await Notifications.cancelAllScheduledNotificationsAsync();
 
-    const reminderHour = WORK_START_HOUR;
-    const reminderMinute = WORK_START_MINUTE - REMINDER_MINUTES_BEFORE;
+    const checkInHour = WORK_START_HOUR;
+    const checkInMinute = WORK_START_MINUTE - REMINDER_MINUTES_BEFORE;
+    // Handle minute underflow
+    const reminderCheckInHour = checkInMinute < 0 ? checkInHour - 1 : checkInHour;
+    const reminderCheckInMinute = checkInMinute < 0 ? 60 + checkInMinute : checkInMinute;
+
+    const checkOutMinute = WORK_END_MINUTE - REMINDER_MINUTES_BEFORE;
+    const reminderCheckOutHour = checkOutMinute < 0 ? WORK_END_HOUR - 1 : WORK_END_HOUR;
+    const reminderCheckOutMinute = checkOutMinute < 0 ? 60 + checkOutMinute : checkOutMinute;
 
     // Schedule for Monday to Saturday (weekday 2-7 in expo-notifications)
     // Sunday = 1, Monday = 2, ..., Saturday = 7
     for (let weekday = 2; weekday <= 7; weekday++) {
+      // Morning check-in reminder (7:45 AM)
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: '⏰ Nhắc nhở chấm công',
-          body: `Còn ${REMINDER_MINUTES_BEFORE} phút nữa là đến giờ làm việc!`,
-          data: { type: 'daily_reminder' },
+          title: '⏰ Nhắc nhở chấm công vào ca',
+          body: `Còn ${REMINDER_MINUTES_BEFORE} phút nữa là đến giờ làm việc! Đừng quên chấm công.`,
+          data: { type: 'checkin_reminder' },
           sound: 'default',
         },
         trigger: {
           type: 'weekly',
           weekday: weekday,
-          hour: reminderHour,
-          minute: reminderMinute,
+          hour: reminderCheckInHour,
+          minute: reminderCheckInMinute,
+          channelId: 'attendance',
+        },
+      });
+
+      // Afternoon check-out reminder (4:45 PM)
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '🏠 Nhắc nhở chấm công ra ca',
+          body: `Còn ${REMINDER_MINUTES_BEFORE} phút nữa là hết giờ làm việc! Đừng quên chấm công ra ca.`,
+          data: { type: 'checkout_reminder' },
+          sound: 'default',
+        },
+        trigger: {
+          type: 'weekly',
+          weekday: weekday,
+          hour: reminderCheckOutHour,
+          minute: reminderCheckOutMinute,
           channelId: 'attendance',
         },
       });
     }
 
-    console.log(`Scheduled daily reminders at ${reminderHour}:${reminderMinute.toString().padStart(2, '0')} (Mon-Sat)`);
+    console.log(`Scheduled check-in reminders at ${reminderCheckInHour}:${reminderCheckInMinute.toString().padStart(2, '0')} (Mon-Sat)`);
+    console.log(`Scheduled check-out reminders at ${reminderCheckOutHour}:${reminderCheckOutMinute.toString().padStart(2, '0')} (Mon-Sat)`);
     return true;
   } catch (error) {
     console.error('Error scheduling daily reminder:', error);

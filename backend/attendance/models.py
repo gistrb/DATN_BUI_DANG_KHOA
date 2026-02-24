@@ -21,11 +21,11 @@ class Department(models.Model):
     
     def get_employee_count(self):
         """Đếm số nhân viên trong phòng ban"""
-        return Employee.objects.filter(department=self.name).count()
+        return self.employees.count()
     
     def get_active_employee_count(self):
         """Đếm số nhân viên đang làm việc"""
-        return Employee.objects.filter(department=self.name, work_status='WORKING').count()
+        return self.employees.filter(work_status='WORKING').count()
 
 
 class Employee(models.Model):
@@ -56,7 +56,14 @@ class Employee(models.Model):
     date_of_birth = models.DateField(null=True, blank=True, verbose_name="Ngày sinh")
     phone_number = models.CharField(max_length=15, null=True, blank=True, verbose_name="Số điện thoại")
     address = models.TextField(null=True, blank=True, verbose_name="Địa chỉ")
-    department = models.CharField(max_length=100, default='Chưa phân công', verbose_name="Phòng ban")
+    department = models.ForeignKey(
+        'Department',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='employees',
+        verbose_name="Phòng ban"
+    )
     position = models.CharField(max_length=100, default='Nhân viên', verbose_name="Chức vụ")
     join_date = models.DateField(default=timezone.now, verbose_name="Ngày vào làm")
     face_embeddings = models.TextField(null=True, blank=True)  # Store multiple face embeddings as JSON

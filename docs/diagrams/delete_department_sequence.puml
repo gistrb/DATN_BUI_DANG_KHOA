@@ -1,0 +1,52 @@
+@startuml
+hide footbox
+actor "Admin" as Admin
+boundary "DepartmentListPage.jsx" as ListUI
+control "api.js" as FrontendAPI
+control "departments_api" as API
+entity "PhongBan" as DB
+
+Admin -> ListUI: Click icon "Xóa"
+activate ListUI
+
+ListUI -> FrontendAPI: GET Check Employee Count
+activate FrontendAPI
+FrontendAPI -> API: Request đếm NV
+activate API
+API -> DB: Count Employees
+activate DB
+DB --> API: Count
+deactivate DB
+API --> FrontendAPI: {employee_count}
+deactivate API
+FrontendAPI --> ListUI: Count
+deactivate FrontendAPI
+
+alt Có nhân viên (Count > 0)
+    ListUI --> Admin: Cảnh báo "Không thể xóa"
+else Trống (Count = 0)
+    ListUI --> Admin: Hộp thoại xác nhận xóa?
+    
+    Admin -> ListUI: Xác nhận (Đồng ý)
+    ListUI -> FrontendAPI: DELETE /api/departments/{id}/
+    activate FrontendAPI
+    FrontendAPI -> API: Request xóa
+    activate API
+    
+    API -> DB: Delete Department
+    activate DB
+    DB --> API: Success
+    deactivate DB
+    
+    API --> FrontendAPI: {success: true}
+    deactivate API
+    FrontendAPI --> ListUI: Success
+    deactivate FrontendAPI
+    
+    ListUI --> ListUI: Reload danh sách
+    ListUI --> Admin: Thông báo thành công
+end
+
+deactivate ListUI
+
+@enduml

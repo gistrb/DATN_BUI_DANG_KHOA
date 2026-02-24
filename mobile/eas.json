@@ -10,7 +10,16 @@
     "preview": {
       "distribution": "internal"
     },
-    "production": {}
+    "production": {},
+    "apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "API_URL": "https://attendance-backend-8pnk.onrender.com"
+      }
+    }
   },
   "submit": {
     "production": {}

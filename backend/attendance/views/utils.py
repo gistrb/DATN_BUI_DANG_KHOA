@@ -2,8 +2,8 @@ from django.utils import timezone
 from datetime import time, timedelta
 from zoneinfo import ZoneInfo
 
-WORK_START_TIME = time(8, 30)
-WORK_END_TIME = time(17, 30)
+WORK_START_TIME = time(8, 0)
+WORK_END_TIME = time(17, 0)
 LUNCH_START = time(12, 0)
 LUNCH_END = time(13, 30)
 EARLY_THRESHOLD = timedelta(hours=1)

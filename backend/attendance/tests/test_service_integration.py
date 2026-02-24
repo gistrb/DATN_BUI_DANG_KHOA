@@ -50,8 +50,8 @@ class TestEmployeeServiceIntegration:
         dept_name = f'Count_Dept_{uuid.uuid4().hex[:8]}'
         dept = Department.objects.create(name=dept_name)
         assert dept.get_employee_count() == 0
-        Employee.objects.create(employee_id='NV_C1', department=dept_name)
-        Employee.objects.create(employee_id='NV_C2', department=dept_name)
+        Employee.objects.create(employee_id='NV_C1', department=dept)
+        Employee.objects.create(employee_id='NV_C2', department=dept)
         assert dept.get_employee_count() == 2
 
 

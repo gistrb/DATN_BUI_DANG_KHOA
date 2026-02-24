@@ -18,11 +18,11 @@ const PublicNotificationsScreen = () => {
           <Text style={styles.cardTitle}>⏰ Giờ làm việc</Text>
           <View style={styles.infoRow}>
             <Text style={styles.label}>Bắt đầu:</Text>
-            <Text style={styles.value}>8:30 sáng</Text>
+            <Text style={styles.value}>8:00 sáng</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.label}>Kết thúc:</Text>
-            <Text style={styles.value}>17:30 chiều</Text>
+            <Text style={styles.value}>17:00 chiều</Text>
           </View>
         </View>
 
@@ -30,11 +30,15 @@ const PublicNotificationsScreen = () => {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>🔔 Nhắc nhở</Text>
           <Text style={styles.description}>
-            Hệ thống sẽ gửi thông báo nhắc nhở chấm công trước 15 phút khi đến giờ làm việc.
+            Hệ thống sẽ gửi thông báo nhắc nhở chấm công trước 15 phút khi vào ca và ra ca.
           </Text>
           <View style={styles.reminderInfo}>
-            <Text style={styles.reminderTime}>📲 8:15 sáng</Text>
+            <Text style={styles.reminderTime}>📲 7:45 sáng</Text>
             <Text style={styles.reminderText}>Nhắc nhở check-in</Text>
+          </View>
+          <View style={[styles.reminderInfo, { marginTop: 8 }]}>
+            <Text style={styles.reminderTime}>📲 16:45 chiều</Text>
+            <Text style={styles.reminderText}>Nhắc nhở check-out</Text>
           </View>
         </View>
 

@@ -29,6 +29,7 @@ const FaceCheck = () => {
   const prevEarRef = useRef(null);
   const [blinkDetected, setBlinkDetected] = useState(false);
   const eyeClosedRef = useRef(false);
+  const blinkTimeoutRef = useRef(null); // Timeout for blink detection phase
 
   // Eye Aspect Ratio threshold - lower = more sensitive
   const EAR_THRESHOLD = 0.25;
@@ -318,9 +319,20 @@ const FaceCheck = () => {
       } else if (faceDetected && faceInOval && countdown >= 2 && !loading) {
         // Move to blink detection phase
         setBlinkPhase('detecting');
-        setStatus('👁️ Hãy chớp mắt!');
+        setStatus('👁️ Hãy chớp mắt! (7 giây)');
         setBlinkDetected(false);
         eyeClosedRef.current = false;
+        
+        // Set 7-second timeout for blink detection
+        if (blinkTimeoutRef.current) clearTimeout(blinkTimeoutRef.current);
+        blinkTimeoutRef.current = setTimeout(() => {
+          // Timeout - reset for next person
+          setBlinkPhase('waiting');
+          setCountdown(0);
+          setBlinkDetected(false);
+          eyeClosedRef.current = false;
+          setStatus('⏰ Hết thời gian! Đưa khuôn mặt vào khung để thử lại');
+        }, 7000);
       } else if (faceDetected && !faceInOval && !loading) {
         setStatus('Di chuyển khuôn mặt vào khung oval');
       } else if (!faceDetected && !loading) {
@@ -329,7 +341,8 @@ const FaceCheck = () => {
     } else if (blinkPhase === 'detecting') {
       // Phase 2: Wait for blink
       if (!faceDetected || !faceInOval) {
-        // Face moved out - reset
+        // Face moved out - reset and clear timeout
+        if (blinkTimeoutRef.current) clearTimeout(blinkTimeoutRef.current);
         setBlinkPhase('waiting');
         setCountdown(0);
         setBlinkDetected(false);
@@ -338,7 +351,8 @@ const FaceCheck = () => {
       }
 
       if (blinkDetected) {
-        // Blink detected - move to confirmed phase
+        // Blink detected - clear timeout and move to confirmed phase
+        if (blinkTimeoutRef.current) clearTimeout(blinkTimeoutRef.current);
         setBlinkPhase('confirmed');
         setBlinkCountdown(1);
         setStatus('✅ Đã nhận diện! Đang xử lý...');
