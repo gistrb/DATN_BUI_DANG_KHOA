@@ -1,11 +1,12 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { login as apiLogin, fetchEmployeeData, registerPushToken } from '../services/api';
 import { 
   initializeNotifications, 
   scheduleDailyReminder, 
   cancelAllNotifications,
-  registerForPushNotifications
+  registerForPushNotifications,
+  setupNotificationListeners
 } from '../services/notificationService';
 
 const AuthContext = createContext(null);
@@ -29,6 +30,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [history, setHistory] = useState([]);
+  const notificationCleanupRef = useRef(null);
 
   const handleLogin = async (username, password) => {
     if (!username || !password) {
@@ -60,6 +62,12 @@ export const AuthProvider = ({ children }) => {
             if (pushToken) {
               await registerPushToken(pushToken, result.data.user.employee_id);
             }
+
+            // Setup notification listeners for incoming push
+            if (notificationCleanupRef.current) {
+              notificationCleanupRef.current(); // cleanup previous listeners
+            }
+            notificationCleanupRef.current = setupNotificationListeners(triggerRealtimeRefresh);
           }
         } else {
           Alert.alert('Tài khoản Admin', 'Bạn đã đăng nhập với tài khoản quản trị. Ứng dụng này dành cho nhân viên.');
@@ -115,6 +123,11 @@ export const AuthProvider = ({ children }) => {
   const handleLogout = async () => {
     // Cancel all scheduled notifications on logout
     await cancelAllNotifications();
+    // Cleanup notification listeners
+    if (notificationCleanupRef.current) {
+      notificationCleanupRef.current();
+      notificationCleanupRef.current = null;
+    }
     setIsLoggedIn(false);
     setUserInfo(null);
     setStats(null);

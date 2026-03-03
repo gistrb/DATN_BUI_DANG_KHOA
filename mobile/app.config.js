@@ -2,7 +2,7 @@ import 'dotenv/config';
 
 export default {
   expo: {
-    name: "mobile_app",
+    name: "Attendance",
     slug: "mobile_app",
     version: "1.0.0",
     orientation: "portrait",
@@ -24,7 +24,7 @@ export default {
       },
       edgeToEdgeEnabled: true,
       package: "com.anonymous.mobile_app",
-      googleServicesFile: "./android/app/google-services.json"
+      googleServicesFile: "./google-services.json"
     },
     web: {
       favicon: "./assets/favicon.png"

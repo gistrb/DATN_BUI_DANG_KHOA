@@ -17,7 +17,7 @@ def get_firebase_app():
     global _firebase_app
     if _firebase_app is None:
         try:
-            # Path to service account file
+            # Try 1: Load from service account file (local development)
             service_account_path = os.path.join(
                 settings.BASE_DIR, 
                 'config', 
@@ -27,10 +27,19 @@ def get_firebase_app():
             if os.path.exists(service_account_path):
                 cred = credentials.Certificate(service_account_path)
                 _firebase_app = firebase_admin.initialize_app(cred)
-                print("Firebase Admin SDK initialized successfully")
+                print("Firebase Admin SDK initialized from file")
             else:
-                print(f"Firebase service account file not found: {service_account_path}")
-                return None
+                # Try 2: Load from environment variable (Render deployment)
+                firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
+                if firebase_creds_json:
+                    import json as json_module
+                    cred_dict = json_module.loads(firebase_creds_json)
+                    cred = credentials.Certificate(cred_dict)
+                    _firebase_app = firebase_admin.initialize_app(cred)
+                    print("Firebase Admin SDK initialized from env var")
+                else:
+                    print(f"Firebase: no service account file ({service_account_path}) and no FIREBASE_CREDENTIALS env var")
+                    return None
         except Exception as e:
             print(f"Error initializing Firebase: {e}")
             return None

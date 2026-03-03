@@ -192,6 +192,7 @@ export const showAttendanceSuccess = async (type, time) => {
           : `Bạn đã check-out lúc ${time}. Hẹn gặp lại ngày mai!`,
         data: { type: 'attendance_success', attendanceType: type },
         sound: 'default',
+        ...(Platform.OS === 'android' && { channelId: 'attendance' }),
       },
       trigger: null, // Show immediately
     });
@@ -230,4 +231,47 @@ export const getScheduledNotifications = async () => {
     console.error('Error getting scheduled notifications:', error);
     return [];
   }
+};
+
+/**
+ * Setup notification listeners for incoming push notifications
+ * Call this after login to listen for attendance notifications from backend
+ * @param {Function} onAttendanceUpdate - Callback to trigger when attendance notification arrives
+ * @returns {Function} cleanup function to remove listeners
+ */
+export const setupNotificationListeners = (onAttendanceUpdate) => {
+  // Listener for notifications received while app is in foreground
+  const receivedSubscription = Notifications.addNotificationReceivedListener(
+    (notification) => {
+      console.log('📩 Notification received in foreground:', notification.request.content.title);
+      const data = notification.request.content.data;
+      
+      // If it's an attendance notification, refresh data
+      if (data?.type === 'attendance' || data?.realtime_update === 'true') {
+        console.log('🔄 Attendance notification - refreshing data...');
+        if (onAttendanceUpdate) onAttendanceUpdate();
+      }
+    }
+  );
+
+  // Listener for when user taps on a notification
+  const responseSubscription = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      console.log('👆 Notification tapped:', response.notification.request.content.title);
+      const data = response.notification.request.content.data;
+      
+      if (data?.type === 'attendance' || data?.realtime_update === 'true') {
+        if (onAttendanceUpdate) onAttendanceUpdate();
+      }
+    }
+  );
+
+  console.log('🔔 Notification listeners registered');
+
+  // Return cleanup function
+  return () => {
+    receivedSubscription.remove();
+    responseSubscription.remove();
+    console.log('🔕 Notification listeners removed');
+  };
 };
