@@ -69,7 +69,13 @@ def process_attendance(request):
                 record.status = 'EARLY'
                 status_message = "Chấm công ra ca thành công (Về sớm)"
             else:
-                status_message = "Chấm công ra ca thành công"
+                # Checkout đúng giờ → khôi phục status theo giờ check-in
+                check_in_local = record.check_in_time.astimezone(now.tzinfo)
+                if check_in_local.time() > WORK_START_TIME:
+                    record.status = 'LATE'
+                else:
+                    record.status = 'ON_TIME'
+                status_message = "Chấm công ra ca thành công (Đúng giờ)"
             employee.current_status = 'OUT_OFFICE'
 
         record.save()
