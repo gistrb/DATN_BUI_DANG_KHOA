@@ -129,6 +129,30 @@ export const registerPushToken = async (pushToken, employeeId) => {
 };
 
 /**
+ * Unregister push token on logout (clear from backend)
+ * @param {string} employeeId - Employee ID
+ * @returns {Promise<{success: boolean, error?: string}>}
+ */
+export const unregisterPushToken = async (employeeId) => {
+  try {
+    const response = await fetch(`${API_URL}/api/push-token/`, {
+      method: 'POST',
+      headers: DEFAULT_HEADERS,
+      body: JSON.stringify({
+        push_token: '',
+        employee_id: employeeId,
+      }),
+    });
+    
+    const data = await response.json();
+    return { success: data.success };
+  } catch (error) {
+    console.error('Error unregistering push token:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
  * Register new account with face verification
  * @param {Object} params - Registration parameters
  * @param {string} params.employee_id - Employee ID

@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
-import { login as apiLogin, fetchEmployeeData, registerPushToken } from '../services/api';
+import { login as apiLogin, fetchEmployeeData, registerPushToken, unregisterPushToken } from '../services/api';
 import { 
   initializeNotifications, 
   scheduleDailyReminder, 
@@ -121,6 +121,10 @@ export const AuthProvider = ({ children }) => {
   };
 
   const handleLogout = async () => {
+    // Unregister push token from backend (stop receiving notifications)
+    if (userInfo?.employee_id) {
+      await unregisterPushToken(userInfo.employee_id);
+    }
     // Cancel all scheduled notifications on logout
     await cancelAllNotifications();
     // Cleanup notification listeners

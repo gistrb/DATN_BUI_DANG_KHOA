@@ -188,23 +188,30 @@ def register_push_token(request):
     try:
         data = json.loads(request.body)
         employee_id = data.get('employee_id')
-        push_token = data.get('push_token')
+        push_token = data.get('push_token', '')
         
-        if not employee_id or not push_token:
+        if not employee_id:
             return JsonResponse({
                 'success': False,
-                'error': 'Missing employee_id or push_token'
+                'error': 'Missing employee_id'
             }, status=400)
         
         try:
             employee = Employee.objects.get(employee_id=employee_id)
-            employee.expo_push_token = push_token
+            # Empty token means unregister (logout)
+            employee.expo_push_token = push_token if push_token else None
             employee.save()
             
-            return JsonResponse({
-                'success': True,
-                'message': 'Push token registered successfully'
-            })
+            if push_token:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Push token registered successfully'
+                })
+            else:
+                return JsonResponse({
+                    'success': True,
+                    'message': 'Push token cleared successfully'
+                })
             
         except Employee.DoesNotExist:
             return JsonResponse({
