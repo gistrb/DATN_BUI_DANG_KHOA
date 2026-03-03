@@ -24,7 +24,7 @@ export default {
       },
       edgeToEdgeEnabled: true,
       package: "com.anonymous.mobile_app",
-      googleServicesFile: "./google-services.json"
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || "./google-services.json"
     },
     web: {
       favicon: "./assets/favicon.png"
