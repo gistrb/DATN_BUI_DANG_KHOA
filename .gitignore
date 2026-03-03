@@ -59,7 +59,6 @@ out/
 Thumbs.db
 Desktop.ini
 
-# Firebase / Google Services (contains API keys)
 backend/config/datastoragedemo-99ff9-3abc57b4ec78.json
 backend/config/*-firebase*.json
 mobile/google-services.json

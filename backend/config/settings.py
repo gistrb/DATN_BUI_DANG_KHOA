@@ -50,25 +50,23 @@ MIDDLEWARE = [
 
 # CORS Configuration
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for testing
 
-# Production CORS from environment
-CORS_ALLOWED_ORIGINS = [
-    origin.strip() for origin in
-    os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173,http://127.0.0.1:5173').split(',')
-    if origin.strip()
-]
-
-# Development: allow LAN IPs
+# CORS settings based on environment
 if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
     CORS_ALLOWED_ORIGIN_REGEXES = [
         r"^http://localhost(:[0-9]+)?$",
         r"^http://127\.0\.0\.1(:[0-9]+)?$",
         r"^http://192\.168\.[0-9]{1,3}\.[0-9]{1,3}(:[0-9]+)?$",
     ]
-    # Allow session cookies for cross-origin requests in development
     SESSION_COOKIE_SAMESITE = 'Lax'
     CSRF_COOKIE_SAMESITE = 'Lax'
+else:
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip() for origin in
+        os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
+        if origin.strip()
+    ]
 
 ROOT_URLCONF = "config.urls"
 
@@ -124,15 +122,7 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS settings
-if DEBUG:
-    CORS_ALLOW_ALL_ORIGINS = True
-else:
-    CORS_ALLOWED_ORIGINS = [
-        origin.strip() for origin in
-        os.environ.get('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
-        if origin.strip()
-    ]
+
 
 LOGIN_REDIRECT_URL = '/'
 
