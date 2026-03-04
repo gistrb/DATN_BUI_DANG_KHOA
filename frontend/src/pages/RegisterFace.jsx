@@ -47,8 +47,8 @@ const RegisterFace = () => {
 
   const POSE_STAGES = [
     { pose: 'front', name: '📸 Nhìn thẳng vào camera', required: 1, color: '#0d6efd' },
-    { pose: 'left', name: ' Xoay mặt sang trái', required: 1, color: '#198754' },
-    { pose: 'right', name: ' Xoay mặt sang phải', required: 1, color: '#198754' },
+    { pose: 'left', name: ' Xoay mặt sang phải', required: 1, color: '#198754' },
+    { pose: 'right', name: ' Xoay mặt sang trái', required: 1, color: '#198754' },
     { pose: 'up', name: 'Ngẩng đầu lên', required: 1, color: '#fd7e14' },
     { pose: 'down', name: ' Cúi đầu xuống', required: 1, color: '#fd7e14' }
   ];
@@ -702,8 +702,8 @@ const RegisterFace = () => {
                   <li className="mb-2">Làm theo hướng dẫn tư thế:
                     <ul className="mt-1">
                       <li>Nhìn thẳng (1 ảnh)</li>
-                      <li>Xoay trái (1 ảnh)</li>
                       <li>Xoay phải (1 ảnh)</li>
+                      <li>Xoay trái (1 ảnh)</li>
                       <li>Ngẩng lên (1 ảnh)</li>
                       <li>Cúi xuống (1 ảnh)</li>
                     </ul>
