@@ -401,7 +401,6 @@ const RegisterFace = () => {
   }, [isCapturing]);
 
 
-
   const handleRegisterWithCaptures = async (embeddings) => {
     setLoading(true);
     setMessage({ type: 'info', text: 'Đang xử lý...' });
