@@ -1,58 +1,56 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
-from ..models import Employee
+from ..models import Employee, EmployeeFaceEmbedding
 from .utils import get_vietnam_now
 import json
-import numpy as np
+import logging
+from pgvector.django import CosineDistance
 import logging
 
 logger = logging.getLogger(__name__)
 
-# Helper to compute cosine similarity with L2-normalization
-def compute_similarity(embedding1, embedding2):
-    vec1 = np.array(embedding1, dtype=np.float64)
-    vec2 = np.array(embedding2, dtype=np.float64)
-    
-    # L2-normalize both vectors for proper cosine similarity
-    norm1 = np.linalg.norm(vec1)
-    norm2 = np.linalg.norm(vec2)
-    
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-    
-    vec1 = vec1 / norm1
-    vec2 = vec2 / norm2
-        
-    return float(np.dot(vec1, vec2))
+# Helper to compute similarity from distance
+def distance_to_similarity(distance):
+    # pgvector CosineDistance returns 1 - cosine_similarity
+    # so cosine_similarity = 1 - distance
+    return 1.0 - distance
 
 def find_matching_employee(input_embedding, threshold=0.65):
-    employees = Employee.objects.filter(is_active=True, face_embeddings__isnull=False)
+    # L2 normalize input embedding just in case, though our frontend already does
+    norm = sum(x**2 for x in input_embedding) ** 0.5
+    if norm > 0:
+        input_embedding = [x / norm for x in input_embedding]
+
+    # Find the closest embedding using CosineDistance
+    # We only search among active employees
+    closest_emb = EmployeeFaceEmbedding.objects.filter(
+        employee__is_active=True
+    ).order_by(
+        CosineDistance('embedding', input_embedding)
+    ).first()
     
-    # Debug: Log embedding dimensions
-    print(f"[DEBUG] Input embedding length: {len(input_embedding)}")
+    if not closest_emb:
+        return None, 0.0
+
+    # Calculate similarity score
+    # pgvector's CosineDistance = 1 - cosine_similarity
+    # Note: we need to annotated the distance or we can calculate it manually 
+    # But order_by uses it, so let's annotate to get the value
     
-    best_match = None
-    max_score = 0
+    closest_emb = EmployeeFaceEmbedding.objects.filter(
+        employee__is_active=True
+    ).annotate(
+        distance=CosineDistance('embedding', input_embedding)
+    ).order_by('distance').first()
     
-    for emp in employees:
-        stored_embeddings = emp.get_face_embeddings() # Assuming this returns list of lists
-        if not stored_embeddings:
-            continue
+    score = distance_to_similarity(closest_emb.distance)
+    
+    print(f"[DEBUG] Best match: {closest_emb.employee.get_full_name()} with distance {closest_emb.distance:.4f} (score: {score:.4f})")
+    
+    if score >= threshold:
+        return closest_emb.employee, score
         
-        # Debug: Log stored embedding dimensions (first one only)
-        if stored_embeddings:
-            print(f"[DEBUG] Stored embedding for {emp.get_full_name()}: length={len(stored_embeddings[0])}")
-            
-        # Compare with all stored embeddings for this employee
-        for stored_emb in stored_embeddings:
-            score = compute_similarity(input_embedding, stored_emb)
-            if score > max_score:
-                max_score = score
-                best_match = emp
-                
-    if max_score > threshold:
-        return best_match, max_score
-    return None, max_score
+    return None, score
 
 @csrf_exempt
 def check_duplicate(request):

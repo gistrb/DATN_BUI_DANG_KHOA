@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 import numpy as np
 import json
+from pgvector.django import VectorField
 
 class Department(models.Model):
     """Model quản lý phòng ban"""
@@ -105,26 +106,26 @@ class Employee(models.Model):
         super().save(*args, **kwargs)
 
     def set_face_embeddings(self, embedding_arrays):
-        """Lưu list của các embedding"""
-        # Handle both numpy arrays and plain lists from frontend
-        embeddings_list = []
+        """Lưu list của các embedding vào bảng phụ bằng pgvector"""
+        # Xóa các embedding cũ
+        self.face_embeddings_vector.all().delete()
+        
+        # Thêm các embedding mới
         for emb in embedding_arrays:
-            if hasattr(emb, 'tolist'):  # numpy array
-                embeddings_list.append(emb.tolist())
-            else:  # already a list
-                embeddings_list.append(emb)
-        self.face_embeddings = json.dumps(embeddings_list)
+            if hasattr(emb, 'tolist'):
+                emb_list = emb.tolist()
+            else:
+                emb_list = emb
+            EmployeeFaceEmbedding.objects.create(employee=self, embedding=emb_list)
 
     def get_face_embeddings(self):
-        """Lấy list của các embedding"""
-        if self.face_embeddings:
-            embeddings_list = json.loads(self.face_embeddings)
-            return [np.array(emb) for emb in embeddings_list]
-        return []
+        """Lấy list của các embedding từ bảng phụ"""
+        embeddings = self.face_embeddings_vector.all()
+        return [np.array(e.embedding) for e in embeddings]
 
     def clear_face_embeddings(self):
         """Xóa tất cả face embeddings của nhân viên"""
-        self.face_embeddings = None
+        self.face_embeddings_vector.all().delete()
         self.save()
         return True
 
@@ -151,6 +152,25 @@ class Employee(models.Model):
 
     def __str__(self):
         return f"{self.get_full_name()} ({self.employee_id})"
+
+
+class EmployeeFaceEmbedding(models.Model):
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, related_name='face_embeddings_vector', verbose_name="Nhân viên")
+    # TFLite/ONNX embedding size is normally around 128 or 512, our ONNX model output says 512
+    # Adjust dimensions if you know the exact size of your embedding. 
+    embedding = VectorField(dimensions=512, verbose_name="Face Embedding Vector")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Face Embedding"
+        verbose_name_plural = "Face Embeddings"
+        indexes = [
+            # Index for faster cosine distance queries
+            # models.Index(fields=['embedding'], name='employee_emb_idx', opclasses=['vector_cosine_ops'])  # HNSW or IVFFlat recommended for large scale, but fine without for now
+        ]
+
+    def __str__(self):
+        return f"Embedding for {self.employee.get_full_name()}"
 
 class AttendanceRecord(models.Model):
     STATUS_CHOICES = [
