@@ -1,13 +1,13 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Webcam from 'react-webcam';
 import { useNavigate } from 'react-router-dom';
-import { FaceDetector, FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import { FaceLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { processAttendance } from '../services/api';
 import { getFaceEmbedding, loadModels } from '../services/faceEmbedding';
+import { loadDetectionModel, getFaceDetection } from '../services/faceDetection';
 
 const FaceCheck = () => {
   const webcamRef = useRef(null);
-  const faceDetectorRef = useRef(null);
   const faceLandmarkerRef = useRef(null);
   const animationRef = useRef(null);
   
@@ -75,14 +75,8 @@ const FaceCheck = () => {
           "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm"
         );
 
-        // Initialize Face Detector
-        const detector = await FaceDetector.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
-            delegate: "CPU"
-          },
-          runningMode: "VIDEO"
-        });
+        // Initialize custom ONNX Face Detector
+        await loadDetectionModel();
 
         // Initialize Face Landmarker for blink detection
         const landmarker = await FaceLandmarker.createFromOptions(vision, {
@@ -94,7 +88,6 @@ const FaceCheck = () => {
           numFaces: 1
         });
 
-        faceDetectorRef.current = detector;
         faceLandmarkerRef.current = landmarker;
 
         // Load TFLite Model for embedding
@@ -215,8 +208,8 @@ const FaceCheck = () => {
     let lastVideoTime = -1;
     let timeoutId = null;
 
-    const detectFace = () => {
-      if (webcamRef.current && webcamRef.current.video && faceDetectorRef.current) {
+    const detectFace = async () => {
+      if (webcamRef.current && webcamRef.current.video) {
         const video = webcamRef.current.video;
         
         if (video.readyState === 4 && !isProcessingRef.current) {
@@ -226,10 +219,10 @@ const FaceCheck = () => {
             lastVideoTime = currentTime;
             
             try {
-              const detections = faceDetectorRef.current.detectForVideo(video, performance.now());
+              const detections = await getFaceDetection(video);
               
-              if (detections.detections && detections.detections.length > 0) {
-                const detection = detections.detections[0];
+              if (detections && detections.length > 0) {
+                const detection = detections[0];
                 const bbox = detection.boundingBox;
                 
                 const videoWidth = video.videoWidth;
