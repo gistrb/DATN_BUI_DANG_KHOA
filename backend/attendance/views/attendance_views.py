@@ -20,10 +20,8 @@ def process_attendance(request):
         if not embedding:
             return JsonResponse({'error': 'No embedding data provided'}, status=400)
 
-        # Verify face using embedding
         employee, score = find_matching_employee(embedding)
         
-        # Log similarity score for debugging
         if employee:
             print(f"[ATTENDANCE] Match found: {employee.get_full_name()} | Similarity: {score:.4f}")
         else:
@@ -49,11 +47,9 @@ def process_attendance(request):
         current_time = now.time()
         status_message = ""
 
-        # Lần quét đầu tiên trong ngày = vào ca, tất cả lần sau = ra ca
         is_first_scan = record.check_in_time is None
 
         if is_first_scan:
-            # Lần đầu tiên: Vào ca
             record.check_in_time = now
             if current_time <= WORK_START_TIME:
                 record.status = 'ON_TIME'
@@ -63,13 +59,11 @@ def process_attendance(request):
                 status_message = "Chấm công vào ca thành công (Đi muộn)"
             employee.current_status = 'IN_OFFICE'
         else:
-            # Tất cả lần sau: Ra ca (cập nhật giờ ra ca mới nhất)
             record.check_out_time = now
             if is_leaving_early(now):
                 record.status = 'EARLY'
                 status_message = "Chấm công ra ca thành công (Về sớm)"
             else:
-                # Checkout đúng giờ → khôi phục status theo giờ check-in
                 check_in_local = record.check_in_time.astimezone(now.tzinfo)
                 if check_in_local.time() > WORK_START_TIME:
                     record.status = 'LATE'
@@ -81,7 +75,6 @@ def process_attendance(request):
         record.save()
         employee.save()
 
-        # Send push notification to mobile app (async - không chờ response)
         time_str = now.strftime('%H:%M')
         threading.Thread(
             target=send_attendance_notification,

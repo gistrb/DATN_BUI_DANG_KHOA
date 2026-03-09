@@ -107,20 +107,12 @@ export const registerForPushNotifications = async () => {
   }
 };
 
-/**
- * Schedule daily reminder notifications:
- * - 7:45 AM: Reminder to check-in (15 min before work starts at 8:00)
- * - 4:45 PM: Reminder to check-out (15 min before work ends at 17:00)
- * Excludes Sunday (day 1 in JS)
- */
 export const scheduleDailyReminder = async () => {
   try {
-    // Cancel existing scheduled notifications first
     await Notifications.cancelAllScheduledNotificationsAsync();
 
     const checkInHour = WORK_START_HOUR;
     const checkInMinute = WORK_START_MINUTE - REMINDER_MINUTES_BEFORE;
-    // Handle minute underflow
     const reminderCheckInHour = checkInMinute < 0 ? checkInHour - 1 : checkInHour;
     const reminderCheckInMinute = checkInMinute < 0 ? 60 + checkInMinute : checkInMinute;
 
@@ -128,10 +120,7 @@ export const scheduleDailyReminder = async () => {
     const reminderCheckOutHour = checkOutMinute < 0 ? WORK_END_HOUR - 1 : WORK_END_HOUR;
     const reminderCheckOutMinute = checkOutMinute < 0 ? 60 + checkOutMinute : checkOutMinute;
 
-    // Schedule for Monday to Saturday (weekday 2-7 in expo-notifications)
-    // Sunday = 1, Monday = 2, ..., Saturday = 7
     for (let weekday = 2; weekday <= 7; weekday++) {
-      // Morning check-in reminder (7:45 AM)
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '⏰ Nhắc nhở chấm công vào ca',
@@ -148,7 +137,6 @@ export const scheduleDailyReminder = async () => {
         },
       });
 
-      // Afternoon check-out reminder (4:45 PM)
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '🏠 Nhắc nhở chấm công ra ca',
@@ -205,9 +193,6 @@ export const showAttendanceSuccess = async (type, time) => {
   }
 };
 
-/**
- * Cancel all scheduled notifications (call on logout)
- */
 export const cancelAllNotifications = async () => {
   try {
     await Notifications.cancelAllScheduledNotificationsAsync();
@@ -219,9 +204,6 @@ export const cancelAllNotifications = async () => {
   }
 };
 
-/**
- * Get all scheduled notifications (for debugging)
- */
 export const getScheduledNotifications = async () => {
   try {
     const notifications = await Notifications.getAllScheduledNotificationsAsync();
@@ -240,13 +222,11 @@ export const getScheduledNotifications = async () => {
  * @returns {Function} cleanup function to remove listeners
  */
 export const setupNotificationListeners = (onAttendanceUpdate) => {
-  // Listener for notifications received while app is in foreground
   const receivedSubscription = Notifications.addNotificationReceivedListener(
     (notification) => {
       console.log('📩 Notification received in foreground:', notification.request.content.title);
       const data = notification.request.content.data;
       
-      // If it's an attendance notification, refresh data
       if (data?.type === 'attendance' || data?.realtime_update === 'true') {
         console.log('🔄 Attendance notification - refreshing data...');
         if (onAttendanceUpdate) onAttendanceUpdate();

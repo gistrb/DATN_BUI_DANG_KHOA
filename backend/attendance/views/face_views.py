@@ -25,7 +25,7 @@ def compute_similarity(embedding1, embedding2):
         
     return float(np.dot(vec1, vec2))
 
-def find_matching_employee(input_embedding, threshold=0.7):
+def find_matching_employee(input_embedding, threshold=0.65):
     employees = Employee.objects.filter(is_active=True, face_embeddings__isnull=False)
     
     # Debug: Log embedding dimensions

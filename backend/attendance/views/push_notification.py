@@ -4,20 +4,15 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 from ..models import Employee
-
-# Firebase Admin SDK
 import firebase_admin
 from firebase_admin import credentials, messaging
 
-# Initialize Firebase Admin SDK (only once)
 _firebase_app = None
 
 def get_firebase_app():
-    """Initialize Firebase Admin SDK with service account"""
     global _firebase_app
     if _firebase_app is None:
         try:
-            # Try 1: Load from service account file (local development)
             service_account_path = os.path.join(
                 settings.BASE_DIR, 
                 'config', 
@@ -29,7 +24,6 @@ def get_firebase_app():
                 _firebase_app = firebase_admin.initialize_app(cred)
                 print("Firebase Admin SDK initialized from file")
             else:
-                # Try 2: Load from environment variable (Render deployment)
                 firebase_creds_json = os.environ.get('FIREBASE_CREDENTIALS')
                 if firebase_creds_json:
                     import json as json_module
@@ -47,20 +41,15 @@ def get_firebase_app():
 
 
 def send_fcm_notification(fcm_token, title, body, data=None):
-    """
-    Send push notification using Firebase Cloud Messaging V1 API
-    """
     if not fcm_token:
         return False
     
-    # Ensure Firebase is initialized
     app = get_firebase_app()
     if app is None:
         print("Firebase not initialized, skipping push notification")
         return False
     
     try:
-        # Build the message
         message = messaging.Message(
             notification=messaging.Notification(
                 title=title,
@@ -78,7 +67,6 @@ def send_fcm_notification(fcm_token, title, body, data=None):
             ),
         )
         
-        # Send the message
         response = messaging.send(message)
         print(f"FCM notification sent successfully: {response}")
         return True
@@ -89,22 +77,13 @@ def send_fcm_notification(fcm_token, title, body, data=None):
 
 
 def send_attendance_notification(employee, is_check_in, time_str):
-    """
-    Send attendance notification to employee's mobile app
-    Uses FCM token stored in employee model
-    """
     if not employee.expo_push_token:
         print(f"No push token for employee {employee.employee_id}")
         return False
     
-    # Extract FCM token from Expo Push Token format
-    # ExponentPushToken[xxx] -> we need the actual FCM token
     fcm_token = employee.expo_push_token
     
-    # If it's an Expo Push Token format, we can't use it directly with FCM
-    # We need to get the actual FCM device token
     if fcm_token.startswith('ExponentPushToken'):
-        # For Expo tokens, we still try via Expo Push Service
         return send_expo_push_notification(employee, is_check_in, time_str)
     
     if is_check_in:
@@ -126,10 +105,6 @@ def send_attendance_notification(employee, is_check_in, time_str):
 
 
 def send_expo_push_notification(employee, is_check_in, time_str):
-    """
-    Fallback: Send push notification using Expo Push Service
-    This is used when we have ExponentPushToken format
-    """
     import requests
     
     push_token = employee.expo_push_token
@@ -177,11 +152,6 @@ def send_expo_push_notification(employee, is_check_in, time_str):
 
 @csrf_exempt
 def register_push_token(request):
-    """
-    API endpoint to register/update push token for an employee
-    POST /api/push-token/
-    Body: { "employee_id": "NV001", "push_token": "ExponentPushToken[xxx]" }
-    """
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)
     
